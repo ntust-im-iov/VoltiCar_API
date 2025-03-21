@@ -1,0 +1,34 @@
+version: '3'
+
+services:
+  api:
+    build: .
+    container_name: volticar-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=mongodb://Volticar:REMOVED_PASSWORD@59.126.6.46:27017/?authSource=admin
+      - VOLTICAR_DB=Volticar
+      - CHARGE_STATION_DB=charge_station
+      - SECRET_KEY=${SECRET_KEY:-REMOVED_SECRET_KEY}
+      - API_ENV=production
+    restart: always
+    networks:
+      - volticar-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+networks:
+  volticar-network:
+    driver: bridge 
