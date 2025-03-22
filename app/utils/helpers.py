@@ -2,9 +2,9 @@ from bson import ObjectId
 import json
 from typing import Any, Dict, List
 
-# 将MongoDB数据转换为可序列化的格式
+# 將MongoDB數據轉換為可序列化的格式
 def handle_mongo_data(data):
-    """递归处理MongoDB数据，将ObjectId转换为字符串"""
+    """遞歸處理MongoDB數據，將ObjectId轉換為字符串"""
     if isinstance(data, dict):
         for key, value in data.items():
             if isinstance(value, ObjectId):
@@ -19,7 +19,7 @@ def handle_mongo_data(data):
                 data[i] = handle_mongo_data(item)
     return data
 
-# 用于处理ObjectId的JSON编码器
+# 用於處理ObjectId的JSON編碼器
 class JSONEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, ObjectId):

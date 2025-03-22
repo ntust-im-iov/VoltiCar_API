@@ -1,62 +1,62 @@
-# 电动汽车充电站 API
+# 電動汽車充電站 API
 
-基于FastAPI的电动汽车充电站管理和用户充电记录系统。
+基於FastAPI的電動汽車充電站管理和用戶充電記錄系統。
 
 ## 功能
 
-- 用户管理：注册、登录、认证
-- 充电站管理：查询、创建充电站
-- 充电记录：记录用户充电活动并计算碳积分
+- 用戶管理：註冊、登錄、認證
+- 充電站管理：查詢、創建充電站
+- 充電記錄：記錄用戶充電活動並計算碳積分
 
-## 技术栈
+## 技術棧
 
-- **FastAPI**：现代、高性能的Python Web框架
-- **MongoDB**：NoSQL数据库存储用户和充电站信息
-- **JWT认证**：安全的基于令牌的认证系统
-- **Pydantic**：数据验证和设置管理
+- **FastAPI**：現代、高性能的Python Web框架
+- **MongoDB**：NoSQL數據庫存儲用戶和充電站信息
+- **JWT認證**：安全的基於令牌的認證系統
+- **Pydantic**：數據驗證和設置管理
 - **Docker**：容器化部署支持
 
-## 项目结构
+## 項目結構
 
 ```
 my_fastapi_project/
 │
-├── app/                    # 应用主目录
+├── app/                    # 應用主目錄
 │   ├── api/                # API路由
 │   │   ├── __init__.py     # API路由初始化
-│   │   ├── user_routes.py  # 用户相关路由
-│   │   └── station_routes.py # 充电站相关路由
+│   │   ├── user_routes.py  # 用戶相關路由
+│   │   └── station_routes.py # 充電站相關路由
 │   │
-│   ├── database/           # 数据库连接
-│   │   └── mongodb.py      # MongoDB连接配置
+│   ├── database/           # 數據庫連接
+│   │   └── mongodb.py      # MongoDB連接配置
 │   │
-│   ├── models/             # 数据模型
-│   │   ├── user.py         # 用户模型
-│   │   └── station.py      # 充电站模型
+│   ├── models/             # 數據模型
+│   │   ├── user.py         # 用戶模型
+│   │   └── station.py      # 充電站模型
 │   │
-│   └── utils/              # 工具函数
-│       ├── auth.py         # 认证工具
-│       └── helpers.py      # 辅助函数
+│   └── utils/              # 工具函數
+│       ├── auth.py         # 認證工具
+│       └── helpers.py      # 輔助函數
 │
-├── Dockerfile              # Docker构建文件
+├── Dockerfile              # Docker構建文件
 ├── docker-compose.yml      # Docker Compose配置
-├── docker-compose.production.yml # 生产环境配置
-├── .env                    # 环境变量配置
-├── main.py                 # 应用入口
-└── requirements.txt        # 项目依赖
+├── docker-compose.production.yml # 生產環境配置
+├── .env                    # 環境變量配置
+├── main.py                 # 應用入口
+└── requirements.txt        # 項目依賴
 ```
 
-## 安装与运行
+## 安裝與運行
 
-### 本地运行
+### 本地運行
 
-1. 安装依赖：
+1. 安裝依賴：
 
 ```bash
 pip install -r requirements.txt
 ```
 
-2. 运行应用：
+2. 運行應用：
 
 ```bash
 python main.py
@@ -64,68 +64,68 @@ python main.py
 
 ### 使用Docker部署
 
-1. 通过Docker Compose启动应用：
+1. 通過Docker Compose啟動應用：
 
 ```bash
 docker-compose up -d
 ```
 
-这将构建API镜像并启动API容器。API将连接到外部MongoDB数据库（59.126.6.46:27017）。
+這將構建API鏡像並啟動API容器。API將連接到外部MongoDB數據庫（59.126.6.46:27017）。
 
-2. 查看运行中的容器：
+2. 查看運行中的容器：
 
 ```bash
 docker-compose ps
 ```
 
-3. 停止服务：
+3. 停止服務：
 
 ```bash
 docker-compose down
 ```
 
-### 生产环境部署
+### 生產環境部署
 
-使用生产环境配置文件启动：
+使用生產環境配置文件啟動：
 
 ```bash
 docker-compose -f docker-compose.production.yml up -d
 ```
 
-或使用提供的启动脚本：
+或使用提供的啟動腳本：
 
 ```bash
 ./startup.sh production
 ```
 
-## 环境变量
+## 環境變量
 
-在`.env`文件或Docker环境变量中配置：
+在`.env`文件或Docker環境變量中配置：
 
-- `DATABASE_URL`: MongoDB连接URL（默认指向59.126.6.46:27017）
-- `VOLTICAR_DB`: Volticar数据库名
-- `CHARGE_STATION_DB`: 充电站数据库名
-- `SECRET_KEY`: JWT认证密钥
-- `API_HOST`: API主机地址
+- `DATABASE_URL`: MongoDB連接URL（默認指向59.126.6.46:27017）
+- `VOLTICAR_DB`: Volticar數據庫名
+- `CHARGE_STATION_DB`: 充電站數據庫名
+- `SECRET_KEY`: JWT認證密鑰
+- `API_HOST`: API主機地址
 - `API_PORT`: API端口
 
-## API端点
+## API端點
 
-### 用户API
+### 用戶API
 
-- `POST /users`：创建新用户
-- `POST /users/token`：用户登录获取令牌
-- `GET /users/me`：获取当前用户信息
-- `GET /users/{user_id}`：获取指定用户信息
-- `POST /users/{user_id}/charge`：记录充电活动
+- `POST /users`：創建新用戶
+- `POST /users/token`：用戶登錄獲取令牌
+- `GET /users/me`：獲取當前用戶信息
+- `GET /users/{user_id}`：獲取指定用戶信息
+- `POST /users/{user_id}/charge`：記錄充電活動
 
-### 充电站API
+### 充電站API
 
-- `GET /stations`：获取所有充电站
-- `GET /stations/{station_id}`：获取指定充电站
-- `GET /stations/city/{city}`：获取指定城市的充电站（支持中文城市名）
-- `POST /stations`：创建新充电站
+- `GET /stations`：獲取所有充電站
+- `GET /stations/{station_id}`：獲取指定充電站
+- `GET /stations/city/{city}`：獲取指定城市的充電站（支持中文城市名）
+- `POST /stations`：創建新充電站
 
-### 健康检查
+### 健康檢查
 
-- `GET /health`: 检查API服务状态 
+- `GET /health`: 檢查API服務狀態 

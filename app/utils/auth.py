@@ -8,26 +8,26 @@ from app.models.user import UserInDB
 from app.database.mongodb import users_collection
 import os
 
-# 安全密钥配置
+# 安全密鑰配置
 SECRET_KEY = os.getenv("SECRET_KEY", "REMOVED_SECRET_KEY")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24小时
+ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24小時
 
-# 密码加密上下文
+# 密碼加密上下文
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# OAuth2认证
+# OAuth2認證
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/users/token")
 
-# 验证密码
+# 驗證密碼
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
-# 生成密码哈希
+# 生成密碼哈希
 def get_password_hash(password):
     return pwd_context.hash(password)
 
-# 根据邮箱获取用户
+# 根據郵箱獲取用戶
 def get_user_by_email(email: str):
     user = users_collection.find_one({"email": email})
     if user:
@@ -35,7 +35,7 @@ def get_user_by_email(email: str):
         return UserInDB(**user)
     return None
 
-# 根据ID获取用户
+# 根據ID獲取用戶
 def get_user_by_id(user_id: str):
     user = users_collection.find_one({"user_id": user_id})
     if user:
@@ -43,7 +43,7 @@ def get_user_by_id(user_id: str):
         return UserInDB(**user)
     return None
 
-# 验证用户
+# 驗證用戶
 def authenticate_user(email: str, password: str):
     user = get_user_by_email(email)
     if not user:
@@ -52,7 +52,7 @@ def authenticate_user(email: str, password: str):
         return False
     return user
 
-# 创建访问令牌
+# 創建訪問令牌
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
@@ -63,11 +63,11 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-# 获取当前用户
+# 獲取當前用戶
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="无效的认证凭据",
+        detail="無效的認證憑據",
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
