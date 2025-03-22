@@ -8,7 +8,7 @@ class Address(BaseModel):
     Road: str
     No: str
 
-# 连接器模型
+# 連接器模型
 class Connector(BaseModel):
     Type: int
     Power: int
@@ -19,15 +19,15 @@ class Connector(BaseModel):
 class Location(BaseModel):
     Address: Address
 
-# 参考模型
+# 參考模型
 class Reference(BaseModel):
     CarPark: Dict[str, Any]
 
-# 充电站名称模型
+# 充電站名稱模型
 class StationName(BaseModel):
     Zh_tw: str
 
-# 充电站完整模型
+# 充電站完整模型
 class ChargeStation(BaseModel):
     StationID: str
     StationName: StationName
@@ -49,7 +49,7 @@ class ChargeStation(BaseModel):
         "from_attributes": True
     }
 
-# 充电站创建请求模型
+# 充電站創建請求模型
 class ChargeStationCreate(BaseModel):
     StationID: str
     StationName: Dict[str, str]

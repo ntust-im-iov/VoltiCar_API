@@ -5,13 +5,15 @@ services:
     build: .
     container_name: volticar-api
     ports:
-      - "8000:8000"
+      - "0.0.0.0:22000:22000"
     environment:
       - DATABASE_URL=mongodb://Volticar:RJW1128@59.126.6.46:27017/?authSource=admin
       - VOLTICAR_DB=Volticar
       - CHARGE_STATION_DB=charge_station
       - SECRET_KEY=${SECRET_KEY:-09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7}
       - API_ENV=production
+      - API_HOST=0.0.0.0
+      - API_PORT=22000
     restart: always
     networks:
       - volticar-network

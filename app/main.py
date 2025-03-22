@@ -3,17 +3,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from api import api_router
 import os
 
-# 创建FastAPI应用实例
+# 創建FastAPI應用實例
 app = FastAPI(
-    title="电动汽车充电站API",
-    description="用于管理电动汽车充电站和用户充电记录的API",
+    title="電動汽車充電站API",
+    description="用於管理電動汽車充電站和用戶充電記錄的API",
     version="1.0.0"
 )
 
 # 配置CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 允许所有来源，生产环境应限制
+    allow_origins=["*"],  # 允許所有來源，生產環境應限制
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -26,17 +26,17 @@ app.include_router(api_router)
 @app.get("/")
 async def root():
     return {
-        "message": "欢迎使用电动汽车充电站API",
+        "message": "歡迎使用電動汽車充電站API",
         "version": "1.0.0",
         "docs_url": "/docs"
     }
 
-# 健康检查端点
+# 健康檢查端點
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "environment": os.getenv("API_ENV", "development")}
 
-# 启动服务器
+# 啟動服務器
 if __name__ == "__main__":
     import uvicorn
     host = os.getenv("API_HOST", "0.0.0.0")
