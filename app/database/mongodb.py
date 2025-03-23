@@ -42,6 +42,23 @@ except Exception as e:
 
 # 定義集合
 users_collection = volticar_db["Users"]
+vehicles_collection = volticar_db["Vehicles"]
+tasks_collection = volticar_db["Tasks"]
+achievements_collection = volticar_db["Achievements"]
+rewards_collection = volticar_db["Rewards"]
+tokens_collection = volticar_db["Tokens"]
+verify_codes_collection = volticar_db["VerifyCodes"]
+leaderboard_collection = volticar_db["Leaderboard"]
+
+# 確保索引存在
+users_collection.create_index("user_uuid", unique=True)
+users_collection.create_index("email", unique=True)
+users_collection.create_index("account", unique=True)
+users_collection.create_index("phone", unique=True)
+vehicles_collection.create_index([("user_uuid", 1), ("vehicle_id", 1)], unique=True)
+tokens_collection.create_index([("user_uuid", 1), ("device", 1)], unique=True)
+tokens_collection.create_index("expires_at", expireAfterSeconds=0)  # 自動移除過期的令牌
+verify_codes_collection.create_index("expires_at", expireAfterSeconds=0)  # 自動移除過期的驗證碼
 
 # 由於charge_station是一個獨立的數據庫，我們需要基於城市名獲取對應的集合
 def get_charge_station_collection(city=None):
