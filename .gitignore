@@ -1,0 +1,29 @@
+# 字節編譯文件
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 發行版/打包文件
+dist/
+build/
+*.egg-info/
+
+# 環境文件
+.env
+.venv
+env/
+venv/
+ENV/
+
+# 日誌文件
+*.log
+
+# 臨時文件
+temp_volticar/
+*.tmp
+*.bak
+
+# 開發工具相關
+.idea/
+.vscode/
+*.sublime-* 

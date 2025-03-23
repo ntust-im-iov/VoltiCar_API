@@ -14,9 +14,22 @@ services:
       - API_ENV=production
       - API_HOST=0.0.0.0
       - API_PORT=22000
+      - PYTHONIOENCODING=utf-8
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      - FIREBASE_CREDENTIALS_PATH=/app/firebase-credentials.json
+    volumes:
+      - ./app:/app/app
+      # 可選：添加Firebase憑證文件的掛載
+      # - ./firebase-credentials.json:/app/firebase-credentials.json
     restart: always
     networks:
       - volticar-network
+    command: >
+      sh -c "
+        echo '===== Volticar API Service (Production) ====='
+        uvicorn main:app --host 0.0.0.0 --port 22000 --workers 4
+      "
     logging:
       driver: "json-file"
       options:
