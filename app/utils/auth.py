@@ -3,8 +3,7 @@ from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from typing import Optional
-from app.models.user import UserInDB
+from typing import Optional, Dict, Any
 from app.database.mongodb import users_collection
 import os
 
@@ -28,29 +27,44 @@ def get_password_hash(password):
     return pwd_context.hash(password)
 
 # 根據郵箱獲取用戶
-def get_user_by_email(email: str):
+def get_user_by_email(email: str) -> Dict[str, Any]:
     user = users_collection.find_one({"email": email})
     if user:
         user["_id"] = str(user["_id"])
-        return UserInDB(**user)
+        return user
     return None
 
-# 根據ID獲取用戶
-def get_user_by_id(user_id: str):
+# 根據用戶名獲取用戶
+def get_user_by_username(username: str) -> Dict[str, Any]:
+    user = users_collection.find_one({"username": username})
+    if user:
+        user["_id"] = str(user["_id"])
+        return user
+    return None
+
+# 根據用戶ID獲取用戶
+def get_user_by_id(user_id: str) -> Dict[str, Any]:
     user = users_collection.find_one({"user_id": user_id})
     if user:
         user["_id"] = str(user["_id"])
-        return UserInDB(**user)
+        return user
+    return None
+
+# 根據手機號獲取用戶
+def get_user_by_phone(phone: str) -> Dict[str, Any]:
+    user = users_collection.find_one({"phone": phone})
+    if user:
+        user["_id"] = str(user["_id"])
+        return user
     return None
 
 # 驗證用戶
-def authenticate_user(email: str, password: str):
-    user = get_user_by_email(email)
+def authenticate_user(user: Dict[str, Any], password: str, password_field: str = "password_hash") -> bool:
     if not user:
         return False
-    if not verify_password(password, user.password):
+    if not verify_password(password, user[password_field]):
         return False
-    return user
+    return True
 
 # 創建訪問令牌
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -64,7 +78,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return encoded_jwt
 
 # 獲取當前用戶
-async def get_current_user(token: str = Depends(oauth2_scheme)):
+async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="無效的認證憑據",
@@ -72,12 +86,14 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
+        user_id: str = payload.get("sub")
+        if user_id is None:
             raise credentials_exception
     except JWTError:
         raise credentials_exception
-    user = get_user_by_email(email)
+    
+    user = get_user_by_id(user_id)
     if user is None:
         raise credentials_exception
+    
     return user 

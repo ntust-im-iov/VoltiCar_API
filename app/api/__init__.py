@@ -1,16 +1,56 @@
 from fastapi import APIRouter
-from app.api.user_routes import router as user_router
-from app.api.station_routes import router as station_router
-from app.api.vehicle_routes import router as vehicle_router
-from app.api.task_routes import router as task_router
-from app.api.token_routes import router as token_router
-from app.api.achievement_routes import router as achievement_router
+import traceback
+import sys
 
+# 創建API路由器
 api_router = APIRouter()
 
-api_router.include_router(user_router)
-api_router.include_router(station_router)
-api_router.include_router(vehicle_router)
-api_router.include_router(task_router)
-api_router.include_router(token_router)
-api_router.include_router(achievement_router)
+# 使用try-except包裝路由器導入，以捕獲任何可能的錯誤
+try:
+    # 嘗試導入所有路由模塊
+    from app.api.user_routes import router as user_router
+    api_router.include_router(user_router)
+    print("✓ 用戶API路由已載入")
+except Exception as e:
+    print(f"✗ 載入用戶API路由時出錯: {str(e)}")
+    traceback.print_exc(file=sys.stdout)
+
+try:
+    from app.api.station_routes import router as station_router
+    api_router.include_router(station_router)
+    print("✓ 充電站API路由已載入")
+except Exception as e:
+    print(f"✗ 載入充電站API路由時出錯: {str(e)}")
+    traceback.print_exc(file=sys.stdout)
+
+try:
+    from app.api.vehicle_routes import router as vehicle_router
+    api_router.include_router(vehicle_router)
+    print("✓ 車輛API路由已載入")
+except Exception as e:
+    print(f"✗ 載入車輛API路由時出錯: {str(e)}")
+    traceback.print_exc(file=sys.stdout)
+
+try:
+    from app.api.task_routes import router as task_router
+    api_router.include_router(task_router)
+    print("✓ 任務API路由已載入")
+except Exception as e:
+    print(f"✗ 載入任務API路由時出錯: {str(e)}")
+    traceback.print_exc(file=sys.stdout)
+
+try:
+    from app.api.token_routes import router as token_router
+    api_router.include_router(token_router)
+    print("✓ 令牌API路由已載入")
+except Exception as e:
+    print(f"✗ 載入令牌API路由時出錯: {str(e)}")
+    traceback.print_exc(file=sys.stdout)
+
+try:
+    from app.api.achievement_routes import router as achievement_router
+    api_router.include_router(achievement_router)
+    print("✓ 成就API路由已載入")
+except Exception as e:
+    print(f"✗ 載入成就API路由時出錯: {str(e)}")
+    traceback.print_exc(file=sys.stdout) 

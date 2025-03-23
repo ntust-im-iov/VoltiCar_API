@@ -1,64 +1,156 @@
-from pymongo import MongoClient
 import os
 import time
-from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
+from pymongo import MongoClient, ASCENDING
+from pymongo.errors import ConnectionFailure, DuplicateKeyError, ServerSelectionTimeoutError
 
-# 數據庫連接信息
-DATABASE_URL = os.getenv("DATABASE_URL", "mongodb://Volticar:REMOVED_PASSWORD@59.126.6.46:27017/?authSource=admin")
+# 從環境變量獲取MongoDB連接URL和資料庫名稱
+DATABASE_URL = os.getenv("DATABASE_URL", "mongodb://Volticar:REMOVED_PASSWORD@59.126.6.46:27017/?authSource=admin&ssl=false")
 VOLTICAR_DB = os.getenv("VOLTICAR_DB", "Volticar")
 CHARGE_STATION_DB = os.getenv("CHARGE_STATION_DB", "charge_station")
 
 # 創建MongoDB客戶端和數據庫連接 - 添加重試機制
-max_retries = 5
-retry_delay = 5  # 秒
+max_retries = 3
+retry_delay = 3  # 秒
 
+print(f"正在連接MongoDB: {DATABASE_URL.split('@')[-1]}")
+
+# 重試連接邏輯
 for retry in range(max_retries):
     try:
-        client = MongoClient(DATABASE_URL, serverSelectionTimeoutMS=10000)
-        # 驗證連接
+        # 最簡單的連接方式，不使用SSL/TLS
+        client = MongoClient(DATABASE_URL, serverSelectionTimeoutMS=5000)
+        
+        # 執行簡單的ping命令檢查連接
         client.admin.command('ping')
-        print(f"MongoDB連接成功！URL: {DATABASE_URL.split('@')[1]}")
+        print(f"MongoDB連接成功! 伺服器版本: {client.server_info()['version']}")
         break
     except (ConnectionFailure, ServerSelectionTimeoutError) as e:
         if retry < max_retries - 1:
-            print(f"MongoDB連接失敗，{retry + 1}/{max_retries}次嘗試，等待{retry_delay}秒後重試... 錯誤: {str(e)}")
+            print(f"MongoDB連接失敗，嘗試 {retry + 1}/{max_retries}，等待 {retry_delay} 秒後重試... 錯誤: {str(e)}")
             time.sleep(retry_delay)
         else:
-            print(f"MongoDB連接失敗，已達到最大重試次數 ({max_retries})。請檢查MongoDB服務是否可用。")
-            # 使用一個默認客戶端，這樣程序可以啟動但功能受限
-            client = MongoClient()
+            print(f"MongoDB連接失敗，達到最大重試次數 ({max_retries})。錯誤: {str(e)}")
+            print("繼續執行，但資料庫功能將不可用...")
+            # 使用空的客戶端，讓程序能夠啟動但資料庫功能不可用
+            client = None
 
-# 獲取數據庫
-volticar_db = client[VOLTICAR_DB]
-charge_station_db = client[CHARGE_STATION_DB]
+# 安全地創建索引的輔助函數
+def safely_create_index(collection, field_name, unique=False, ascending=True):
+    try:
+        # 檢查索引是否已存在
+        existing_indexes = collection.index_information()
+        index_name = f"{field_name}_1" if ascending else f"{field_name}_-1"
+        
+        if index_name in existing_indexes:
+            print(f"  索引 {index_name} 已存在，跳過創建")
+            return
+        
+        # 創建索引，如果是唯一索引，添加sparse=True避免null值問題
+        direction = ASCENDING if ascending else -1
+        if unique:
+            collection.create_index([(field_name, direction)], unique=True, sparse=True)
+            print(f"  創建唯一索引(sparse): {index_name}")
+        else:
+            collection.create_index([(field_name, direction)])
+            print(f"  創建索引: {index_name}")
+    except Exception as e:
+        print(f"  創建索引 {field_name} 時出錯: {str(e)}")
+
+# 如果連接成功，設置數據庫和集合
+if client is not None:
+    try:
+        # 獲取數據庫
+        volticar_db = client[VOLTICAR_DB]
+        charge_station_db = client[CHARGE_STATION_DB]
+        
+        # 獲取集合
+        users_collection = volticar_db["Users"]
+        login_records_collection = volticar_db["LoginRecords"]
+        otp_records_collection = volticar_db["OTPRecords"]
+        stations_collection = charge_station_db["Stations"]
+        vehicles_collection = volticar_db["Vehicles"]
+        tasks_collection = volticar_db["Tasks"]
+        achievements_collection = volticar_db["Achievements"]
+        rewards_collection = volticar_db["Rewards"]
+        
+        # 使用安全的索引創建方法
+        print("正在檢查並創建所需的MongoDB索引...")
+        
+        # 用戶集合索引
+        print("用戶集合索引:")
+        safely_create_index(users_collection, "user_id", unique=True)
+        safely_create_index(users_collection, "email", unique=True)
+        safely_create_index(users_collection, "username", unique=True)
+        safely_create_index(users_collection, "phone", unique=True)
+        safely_create_index(users_collection, "google_id", unique=True)
+        
+        # 登入記錄索引
+        print("登入記錄索引:")
+        safely_create_index(login_records_collection, "user_id")
+        safely_create_index(login_records_collection, "login_timestamp")
+        
+        # OTP記錄索引
+        print("OTP記錄索引:")
+        safely_create_index(otp_records_collection, "user_id")
+        safely_create_index(otp_records_collection, "expires_at")
+        
+        # 車輛索引
+        print("車輛索引:")
+        safely_create_index(vehicles_collection, "vehicle_id", unique=True)
+        safely_create_index(vehicles_collection, "user_id")
+        
+        # 任務索引
+        print("任務索引:")
+        safely_create_index(tasks_collection, "task_id", unique=True)
+        
+        # 成就索引
+        print("成就索引:")
+        safely_create_index(achievements_collection, "achievement_id", unique=True)
+        
+        # 獎勵索引
+        print("獎勵索引:")
+        safely_create_index(rewards_collection, "item_id", unique=True)
+        
+        print("MongoDB索引檢查完成!")
+    
+    except Exception as e:
+        print(f"設置數據庫及集合時發生錯誤: {e}")
+        # 如果出現錯誤，創建空對象以免引發屬性錯誤
+        volticar_db = None
+        charge_station_db = None
+        users_collection = None
+        login_records_collection = None
+        otp_records_collection = None
+        stations_collection = None
+        vehicles_collection = None
+        tasks_collection = None
+        achievements_collection = None
+        rewards_collection = None
+else:
+    # 連接失敗時，創建空對象以免引發屬性錯誤
+    volticar_db = None
+    charge_station_db = None
+    users_collection = None
+    login_records_collection = None
+    otp_records_collection = None
+    stations_collection = None
+    vehicles_collection = None
+    tasks_collection = None
+    achievements_collection = None
+    rewards_collection = None
+    
+    print("警告: 無法連接到MongoDB，API將在無數據庫模式下運行")
 
 # 打印連接信息以便調試
-print(f"已連接到數據庫: {VOLTICAR_DB} 和 {CHARGE_STATION_DB}")
-print(f"可用的集合: {', '.join(volticar_db.list_collection_names())}")
-try:
-    print(f"充電站數據庫中可用的城市: {', '.join(charge_station_db.list_collection_names())}")
-except Exception as e:
-    print(f"無法獲取充電站集合列表: {str(e)}")
-
-# 定義集合
-users_collection = volticar_db["Users"]
-vehicles_collection = volticar_db["Vehicles"]
-tasks_collection = volticar_db["Tasks"]
-achievements_collection = volticar_db["Achievements"]
-rewards_collection = volticar_db["Rewards"]
-tokens_collection = volticar_db["Tokens"]
-verify_codes_collection = volticar_db["VerifyCodes"]
-leaderboard_collection = volticar_db["Leaderboard"]
-
-# 確保索引存在
-users_collection.create_index("user_uuid", unique=True)
-users_collection.create_index("email", unique=True)
-users_collection.create_index("account", unique=True)
-users_collection.create_index("phone", unique=True)
-vehicles_collection.create_index([("user_uuid", 1), ("vehicle_id", 1)], unique=True)
-tokens_collection.create_index([("user_uuid", 1), ("device", 1)], unique=True)
-tokens_collection.create_index("expires_at", expireAfterSeconds=0)  # 自動移除過期的令牌
-verify_codes_collection.create_index("expires_at", expireAfterSeconds=0)  # 自動移除過期的驗證碼
+if volticar_db is not None:
+    print(f"已連接到數據庫: {VOLTICAR_DB}")
+    print(f"可用的集合: {', '.join(volticar_db.list_collection_names())}")
+if charge_station_db is not None:
+    try:
+        cities = charge_station_db.list_collection_names()
+        print(f"充電站數據庫中可用的城市: {', '.join(cities)}")
+    except Exception as e:
+        print(f"無法獲取充電站集合列表: {str(e)}")
 
 # 由於charge_station是一個獨立的數據庫，我們需要基於城市名獲取對應的集合
 def get_charge_station_collection(city=None):

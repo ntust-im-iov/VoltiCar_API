@@ -11,11 +11,29 @@ services:
       - VOLTICAR_DB=Volticar
       - CHARGE_STATION_DB=charge_station
       - SECRET_KEY=REMOVED_SECRET_KEY
+      - API_ENV=development
       - API_HOST=0.0.0.0
       - API_PORT=22000
+      - PYTHONIOENCODING=utf-8
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      # Firebase 設置 - 需替換為實際的憑證路徑或內容
+      - FIREBASE_CREDENTIALS_PATH=/app/firebase-credentials.json
     volumes:
       - ./app:/app/app
+      - ./requirements.txt:/app/requirements.txt
+      # 可選：添加Firebase憑證文件的掛載
+      # - ./firebase-credentials.json:/app/firebase-credentials.json
     restart: always
+    networks:
+      - volticar-network
+    command: >
+      sh -c "
+        echo '===== Volticar API Service ====='
+        pip install --no-cache-dir -r requirements.txt
+        pip install --no-cache-dir email-validator
+        uvicorn main:app --host 0.0.0.0 --port 22000
+      "
 
 networks:
   volticar-network:
