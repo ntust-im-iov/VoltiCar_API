@@ -161,9 +161,10 @@ class FCMTokenUpdate(BaseModel):
 
 # 好友操作模型
 class FriendAction(BaseModel):
+    """好友操作請求模型"""
     user_id: str
     friend_id: str
-    action: str  # "add" 或 "remove"
+    action: str  # add, remove
 
 # 充電站模型
 class Station(BaseModel):
@@ -181,4 +182,21 @@ class UserInDB(UserCreate):
     user_id: str
     password_hash: str
     created_at: datetime.datetime = Field(default_factory=datetime.datetime.now)
-    updated_at: datetime.datetime = Field(default_factory=datetime.datetime.now) 
+    updated_at: datetime.datetime = Field(default_factory=datetime.datetime.now)
+
+class GoogleLoginRequest(BaseModel):
+    """Google登入請求模型"""
+    google_id: str = None
+    email: str = None
+    name: str = None
+    picture: str = None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "google_id": "109554286477309922371",
+                "email": "user@gmail.com",
+                "name": "User Name",
+                "picture": "https://lh3.googleusercontent.com/a/profile_picture"
+            }
+        } 
