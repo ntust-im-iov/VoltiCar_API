@@ -10,7 +10,7 @@ import os
 from app.models.user import (
     User, UserCreate, UserInDB, Token, UserLogin, OTPRequest, OTPVerification, OTPRecord,
     LoginRecord, Task, Achievement, LeaderboardItem, RewardItem, Inventory, FCMTokenUpdate,
-    FriendAction, Station
+    FriendAction, Station, GoogleLoginRequest
 )
 from app.utils.auth import authenticate_user, create_access_token, get_current_user, get_password_hash
 from app.database.mongodb import (
@@ -812,4 +812,90 @@ async def get_charging_stations(user_id: str, location: str):
         "status": "success",
         "msg": "獲取充電站信息成功",
         "stations": stations
-    } 
+    }
+
+# 處理Gmail登入
+@router.post("/login/google", summary="使用Google帳號登入")
+async def login_with_google(google_data: GoogleLoginRequest):
+    """
+    使用Google帳號登入，成功返回JWT令牌
+    """
+    try:
+        # 驗證Google ID令牌（簡化版示例，實際應用中應該調用Google API驗證令牌）
+        # TODO: 實現完整的Google令牌驗證
+        
+        # 檢查此Google ID是否已存在於資料庫
+        google_id = google_data.google_id
+        existing_user = None
+        
+        if google_id and google_id.strip():  # 確保google_id不是空字符串或None
+            # 使用google_id查找用戶
+            existing_user = users_collection.find_one({"google_id": google_id})
+        
+        if existing_user:
+            # 已存在的Google用戶，更新登入時間
+            users_collection.update_one(
+                {"_id": existing_user["_id"]},
+                {"$set": {"last_login": datetime.now().isoformat()}}
+            )
+            
+            # 創建訪問令牌
+            access_token = create_access_token(
+                data={"sub": str(existing_user["_id"])},
+                expires_delta=timedelta(days=7)
+            )
+            
+            return {"access_token": access_token, "token_type": "bearer"}
+        else:
+            # 新Google用戶，檢查電子郵件是否已被使用
+            email = google_data.email
+            email_user = users_collection.find_one({"email": email}) if email else None
+            
+            if email_user:
+                # 用戶電子郵件已存在，但未綁定Google帳號，更新用戶添加Google ID
+                if google_id and google_id.strip():  # 再次確認google_id有效
+                    users_collection.update_one(
+                        {"_id": email_user["_id"]},
+                        {"$set": {
+                            "google_id": google_id,
+                            "last_login": datetime.now().isoformat()
+                        }}
+                    )
+                
+                # 創建訪問令牌
+                access_token = create_access_token(
+                    data={"sub": str(email_user["_id"])},
+                    expires_delta=timedelta(days=7)
+                )
+                
+                return {"access_token": access_token, "token_type": "bearer"}
+            else:
+                # 完全新用戶，創建新帳號
+                new_user = {
+                    "user_id": str(uuid.uuid4()),
+                    "email": email,
+                    "username": google_data.name or f"user_{uuid.uuid4().hex[:8]}",
+                    "created_at": datetime.now().isoformat(),
+                    "last_login": datetime.now().isoformat(),
+                    "is_active": True,
+                    "carbon_points": 0
+                }
+                
+                # 只有當google_id有效時才添加到文檔中
+                if google_id and google_id.strip():
+                    new_user["google_id"] = google_id
+                
+                # 插入新用戶
+                result = users_collection.insert_one(new_user)
+                
+                # 創建訪問令牌
+                access_token = create_access_token(
+                    data={"sub": str(result.inserted_id)},
+                    expires_delta=timedelta(days=7)
+                )
+                
+                return {"access_token": access_token, "token_type": "bearer"}
+    
+    except Exception as e:
+        logger.error(f"Google登入失敗: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Google登入失敗: {str(e)}") 

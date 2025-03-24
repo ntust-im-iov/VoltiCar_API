@@ -44,11 +44,7 @@ try:
     
     print("\n[步驟4] 檢查並處理重複的null值文檔")
     
-    # 檢查google_id為null的文檔
-    google_id_null_count = users_collection.count_documents({"google_id": None})
-    print(f"發現 {google_id_null_count} 個google_id為null的文檔")
-    
-    # 檢查其他可能重複的null值字段
+    # 檢查重要字段的null值
     fields_to_check = ["user_id", "email", "username", "phone", "google_id"]
     for field in fields_to_check:
         null_count = users_collection.count_documents({field: None})
@@ -59,14 +55,25 @@ try:
             # 查找具有null值的文檔
             null_docs = list(users_collection.find({field: None}))
             
-            # 保留第一個文檔，為其他文檔設置唯一值
+            # 保留第一個文檔，為其他文檔完全移除該欄位
             for i, doc in enumerate(null_docs[1:], 1):
-                print(f"    更新文檔 {doc['_id']} 的 {field} 字段")
+                print(f"    更新文檔 {doc['_id']} 的 {field} 字段 (完全移除)")
                 users_collection.update_one(
                     {"_id": doc["_id"]},
-                    {"$set": {field: f"temp_unique_value_{field}_{i}"}}
+                    {"$unset": {field: ""}}  # 完全移除該字段
                 )
             print(f"    ✓ 已處理 {len(null_docs)-1} 個重複的{field}為null的文檔")
+    
+    # 特別處理google_id字段，檢查是否有空字符串值
+    empty_google_id_count = users_collection.count_documents({"google_id": ""})
+    if empty_google_id_count > 0:
+        print(f"  - 發現 {empty_google_id_count} 個google_id為空字符串的文檔")
+        # 將空字符串google_id完全移除
+        users_collection.update_many(
+            {"google_id": ""},
+            {"$unset": {"google_id": ""}}
+        )
+        print(f"    ✓ 已移除 {empty_google_id_count} 個空字符串google_id")
     
     print("\n[步驟5] 重新創建索引，使用sparse=True選項")
     
@@ -85,6 +92,29 @@ try:
     for index_name, index_info in new_indexes.items():
         if index_name != "_id_":
             print(f"  - {index_name}: {index_info}")
+            
+    print("\n[步驟7] 修復google_id索引特殊問題")
+    # 檢查是否還有文檔具有google_id: null
+    null_google_ids = list(users_collection.find({"google_id": None}))
+    if len(null_google_ids) > 0:
+        print(f"  仍有 {len(null_google_ids)} 個文檔的google_id為null，嘗試更徹底的修復...")
+        
+        # 更徹底的修復：完全移除google_id字段
+        for doc in null_google_ids:
+            users_collection.update_one(
+                {"_id": doc["_id"]},
+                {"$unset": {"google_id": ""}}
+            )
+        
+        # 重新創建google_id索引
+        try:
+            users_collection.drop_index("google_id_1")
+            users_collection.create_index([("google_id", ASCENDING)], unique=True, sparse=True)
+            print("  ✓ google_id索引已重新創建")
+        except Exception as e:
+            print(f"  ✗ 重新創建google_id索引時出錯: {str(e)}")
+    else:
+        print("  ✓ google_id索引問題已解決")
             
     print("\n✓ MongoDB索引修復完成!")
     

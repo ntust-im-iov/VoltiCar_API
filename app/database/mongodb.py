@@ -56,6 +56,30 @@ def safely_create_index(collection, field_name, unique=False, ascending=True):
     except Exception as e:
         print(f"  創建索引 {field_name} 時出錯: {str(e)}")
 
+# 處理可能存在的重複null值問題，特別處理google_id
+def handle_null_duplicates(collection, field_name):
+    try:
+        # 計算指定字段為null的文檔數量
+        null_count = collection.count_documents({field_name: None})
+        
+        if null_count > 1:
+            print(f"  發現 {null_count} 個 {field_name} 為null的文檔，開始處理...")
+            
+            # 取得所有字段為null的文檔
+            null_docs = list(collection.find({field_name: None}))
+            
+            # 保留第一個文檔，為其餘文檔設置默認值以避免重複
+            for i, doc in enumerate(null_docs[1:], 1):
+                # 更新文檔，將字段設置為特殊值或刪除該字段
+                collection.update_one(
+                    {"_id": doc["_id"]},
+                    {"$unset": {field_name: ""}}  # 完全移除該字段
+                )
+                
+            print(f"  成功處理 {len(null_docs) - 1} 個 {field_name} 為null的文檔")
+    except Exception as e:
+        print(f"  處理 {field_name} 的null值時出錯: {str(e)}")
+
 # 如果連接成功，設置數據庫和集合
 if client is not None:
     try:
@@ -72,6 +96,11 @@ if client is not None:
         tasks_collection = volticar_db["Tasks"]
         achievements_collection = volticar_db["Achievements"]
         rewards_collection = volticar_db["Rewards"]
+        
+        # 先處理可能存在的null值重複問題
+        print("檢查並處理可能的null值重複問題...")
+        handle_null_duplicates(users_collection, "google_id")
+        handle_null_duplicates(users_collection, "phone")
         
         # 使用安全的索引創建方法
         print("正在檢查並創建所需的MongoDB索引...")
