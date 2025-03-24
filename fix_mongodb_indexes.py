@@ -2,6 +2,7 @@
 """
 MongoDB索引修復腳本
 專門用於解決Volticar API的MongoDB索引重複鍵問題
+增加複合索引和login_type欄位支持
 """
 import os
 import sys
@@ -10,7 +11,7 @@ from pymongo import MongoClient, ASCENDING
 from pymongo.errors import ConnectionFailure, DuplicateKeyError, ServerSelectionTimeoutError
 
 print("=" * 60)
-print("MongoDB索引修復工具")
+print("MongoDB索引修復工具 (複合索引版)")
 print("=" * 60)
 
 # 連接到MongoDB
@@ -33,7 +34,27 @@ try:
     doc_count = users_collection.count_documents({})
     print(f"✓ 總共發現 {doc_count} 個文檔")
     
-    print("\n[步驟3] 檢查並刪除現有索引")
+    print("\n[步驟3] 添加新的login_type欄位")
+    # 計算沒有login_type欄位的文檔數
+    missing_login_type = users_collection.count_documents({"login_type": {"$exists": False}})
+    print(f"發現 {missing_login_type} 個文檔沒有login_type欄位")
+    
+    if missing_login_type > 0:
+        # 為有google_id的用戶設置login_type為'google'
+        result1 = users_collection.update_many(
+            {"login_type": {"$exists": False}, "google_id": {"$ne": None, "$exists": True}},
+            {"$set": {"login_type": "google"}}
+        )
+        print(f"✓ 已為 {result1.modified_count} 個Google用戶添加login_type欄位")
+        
+        # 為其餘用戶設置login_type為'password'
+        result2 = users_collection.update_many(
+            {"login_type": {"$exists": False}},
+            {"$set": {"login_type": "password"}}
+        )
+        print(f"✓ 已為 {result2.modified_count} 個一般用戶添加login_type欄位")
+    
+    print("\n[步驟4] 檢查並刪除現有索引")
     indexes = users_collection.index_information()
     print(f"發現 {len(indexes)} 個索引:")
     for index_name, index_info in indexes.items():
@@ -42,79 +63,83 @@ try:
             users_collection.drop_index(index_name)
     print("✓ 已刪除所有非主索引")
     
-    print("\n[步驟4] 檢查並處理重複的null值文檔")
+    print("\n[步驟5] 檢查並修改google_id欄位")
+    # 對於login_type='password'的用戶，完全移除google_id欄位
+    password_users = users_collection.count_documents({
+        "login_type": "password",
+        "google_id": {"$exists": True}
+    })
     
-    # 檢查重要字段的null值
-    fields_to_check = ["user_id", "email", "username", "phone", "google_id"]
-    for field in fields_to_check:
-        null_count = users_collection.count_documents({field: None})
-        print(f"  - {field}: {null_count} 個null值")
-        
-        if null_count > 1:
-            print(f"    正在處理重複的{field}為null的文檔...")
-            # 查找具有null值的文檔
-            null_docs = list(users_collection.find({field: None}))
-            
-            # 保留第一個文檔，為其他文檔完全移除該欄位
-            for i, doc in enumerate(null_docs[1:], 1):
-                print(f"    更新文檔 {doc['_id']} 的 {field} 字段 (完全移除)")
-                users_collection.update_one(
-                    {"_id": doc["_id"]},
-                    {"$unset": {field: ""}}  # 完全移除該字段
-                )
-            print(f"    ✓ 已處理 {len(null_docs)-1} 個重複的{field}為null的文檔")
-    
-    # 特別處理google_id字段，檢查是否有空字符串值
-    empty_google_id_count = users_collection.count_documents({"google_id": ""})
-    if empty_google_id_count > 0:
-        print(f"  - 發現 {empty_google_id_count} 個google_id為空字符串的文檔")
-        # 將空字符串google_id完全移除
+    if password_users > 0:
         users_collection.update_many(
-            {"google_id": ""},
+            {"login_type": "password"},
             {"$unset": {"google_id": ""}}
         )
-        print(f"    ✓ 已移除 {empty_google_id_count} 個空字符串google_id")
+        print(f"✓ 已從 {password_users} 個一般用戶移除google_id欄位")
     
-    print("\n[步驟5] 重新創建索引，使用sparse=True選項")
+    # 確保所有google用戶有有效的google_id
+    invalid_google_ids = users_collection.count_documents({
+        "login_type": "google",
+        "$or": [
+            {"google_id": None},
+            {"google_id": ""},
+            {"google_id": {"$exists": False}}
+        ]
+    })
     
-    # 為每個字段創建索引
-    for field in fields_to_check:
-        try:
-            print(f"  創建索引: {field}")
-            users_collection.create_index([(field, ASCENDING)], unique=True, sparse=True)
-            print(f"  ✓ 已成功創建索引: {field}")
-        except Exception as e:
-            print(f"  ✗ 創建索引 {field} 時出錯: {str(e)}")
+    if invalid_google_ids > 0:
+        print(f"警告: 發現 {invalid_google_ids} 個Google用戶的google_id無效")
+        # 將這些用戶改為password類型
+        users_collection.update_many(
+            {
+                "login_type": "google",
+                "$or": [
+                    {"google_id": None},
+                    {"google_id": ""},
+                    {"google_id": {"$exists": False}}
+                ]
+            },
+            {"$set": {"login_type": "password"}, "$unset": {"google_id": ""}}
+        )
+        print(f"✓ 已將這些用戶改為一般用戶類型並移除無效的google_id欄位")
     
-    print("\n[步驟6] 驗證索引創建結果")
+    print("\n[步驟6] 創建新的索引，包括複合索引")
+    # 主要欄位索引
+    try:
+        print("  創建user_id索引")
+        users_collection.create_index([("user_id", ASCENDING)], unique=True, sparse=True)
+        print("  ✓ 已成功創建索引: user_id")
+        
+        print("  創建email索引")
+        users_collection.create_index([("email", ASCENDING)], unique=True, sparse=True)
+        print("  ✓ 已成功創建索引: email")
+        
+        print("  創建username索引")
+        users_collection.create_index([("username", ASCENDING)], unique=True, sparse=True)
+        print("  ✓ 已成功創建索引: username")
+        
+        print("  創建phone索引")
+        users_collection.create_index([("phone", ASCENDING)], unique=True, sparse=True)
+        print("  ✓ 已成功創建索引: phone")
+        
+        # 創建google_id和login_type的複合索引
+        print("  創建google_id和login_type的複合索引")
+        users_collection.create_index(
+            [("google_id", ASCENDING), ("login_type", ASCENDING)],
+            unique=True,
+            sparse=True
+        )
+        print("  ✓ 已成功創建複合索引: google_id + login_type")
+        
+    except Exception as e:
+        print(f"  ✗ 創建索引時出錯: {str(e)}")
+    
+    print("\n[步驟7] 驗證索引創建結果")
     new_indexes = users_collection.index_information()
     print(f"✓ 成功創建 {len(new_indexes)-1} 個索引:")
     for index_name, index_info in new_indexes.items():
         if index_name != "_id_":
             print(f"  - {index_name}: {index_info}")
-            
-    print("\n[步驟7] 修復google_id索引特殊問題")
-    # 檢查是否還有文檔具有google_id: null
-    null_google_ids = list(users_collection.find({"google_id": None}))
-    if len(null_google_ids) > 0:
-        print(f"  仍有 {len(null_google_ids)} 個文檔的google_id為null，嘗試更徹底的修復...")
-        
-        # 更徹底的修復：完全移除google_id字段
-        for doc in null_google_ids:
-            users_collection.update_one(
-                {"_id": doc["_id"]},
-                {"$unset": {"google_id": ""}}
-            )
-        
-        # 重新創建google_id索引
-        try:
-            users_collection.drop_index("google_id_1")
-            users_collection.create_index([("google_id", ASCENDING)], unique=True, sparse=True)
-            print("  ✓ google_id索引已重新創建")
-        except Exception as e:
-            print(f"  ✗ 重新創建google_id索引時出錯: {str(e)}")
-    else:
-        print("  ✓ google_id索引問題已解決")
             
     print("\n✓ MongoDB索引修復完成!")
     
