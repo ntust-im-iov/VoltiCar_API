@@ -56,6 +56,24 @@ def safely_create_index(collection, field_name, unique=False, ascending=True):
     except Exception as e:
         print(f"  創建索引 {field_name} 時出錯: {str(e)}")
 
+# 安全地創建複合索引的輔助函數
+def safely_create_compound_index(collection, fields, unique=False):
+    try:
+        # 生成索引名稱，格式如: "field1_1_field2_1"
+        index_name = "_".join([f"{field}_1" for field, _ in fields])
+        
+        # 檢查索引是否已存在
+        existing_indexes = collection.index_information()
+        if index_name in existing_indexes:
+            print(f"  複合索引 {index_name} 已存在，跳過創建")
+            return
+        
+        # 創建複合索引，使用sparse=True避免null值問題
+        collection.create_index(fields, unique=unique, sparse=True)
+        print(f"  創建複合索引(sparse): {index_name}")
+    except Exception as e:
+        print(f"  創建複合索引 {index_name} 時出錯: {str(e)}")
+
 # 處理可能存在的重複null值問題，特別處理google_id
 def handle_null_duplicates(collection, field_name):
     try:
@@ -80,6 +98,36 @@ def handle_null_duplicates(collection, field_name):
     except Exception as e:
         print(f"  處理 {field_name} 的null值時出錯: {str(e)}")
 
+# 遷移登入類型欄位的函數，為現有用戶添加login_type
+def migrate_login_type_field(collection):
+    try:
+        # 檢查有多少文檔沒有login_type欄位
+        missing_login_type = collection.count_documents({"login_type": {"$exists": False}})
+        
+        if missing_login_type > 0:
+            print(f"  發現 {missing_login_type} 個文檔沒有login_type欄位，開始遷移...")
+            
+            # 更新所有沒有login_type的文檔，判斷登入類型
+            # 如果有google_id，設為'google'，否則設為'password'
+            collection.update_many(
+                {"login_type": {"$exists": False}, "google_id": {"$ne": None, "$exists": True}},
+                {"$set": {"login_type": "google"}}
+            )
+            
+            collection.update_many(
+                {"login_type": {"$exists": False}, "$or": [
+                    {"google_id": None},
+                    {"google_id": {"$exists": False}}
+                ]},
+                {"$set": {"login_type": "password"}}
+            )
+            
+            # 檢查更新後還有多少文檔沒有login_type
+            remaining = collection.count_documents({"login_type": {"$exists": False}})
+            print(f"  ✓ 已為 {missing_login_type - remaining} 個文檔添加login_type欄位")
+    except Exception as e:
+        print(f"  遷移login_type欄位時出錯: {str(e)}")
+
 # 如果連接成功，設置數據庫和集合
 if client is not None:
     try:
@@ -97,6 +145,10 @@ if client is not None:
         achievements_collection = volticar_db["Achievements"]
         rewards_collection = volticar_db["Rewards"]
         
+        # 遷移login_type欄位
+        print("開始遷移login_type欄位...")
+        migrate_login_type_field(users_collection)
+        
         # 先處理可能存在的null值重複問題
         print("檢查並處理可能的null值重複問題...")
         handle_null_duplicates(users_collection, "google_id")
@@ -111,7 +163,23 @@ if client is not None:
         safely_create_index(users_collection, "email", unique=True)
         safely_create_index(users_collection, "username", unique=True)
         safely_create_index(users_collection, "phone", unique=True)
-        safely_create_index(users_collection, "google_id", unique=True)
+        
+        # 將唯一的google_id索引改為google_id + login_type的複合索引
+        print("創建google_id複合索引:")
+        # 先嘗試刪除舊的google_id索引
+        try:
+            if "google_id_1" in users_collection.index_information():
+                users_collection.drop_index("google_id_1")
+                print("  ✓ 已刪除舊的google_id索引")
+        except Exception as e:
+            print(f"  刪除舊索引時出錯: {str(e)}")
+        
+        # 創建新的複合索引
+        safely_create_compound_index(
+            users_collection, 
+            [("google_id", ASCENDING), ("login_type", ASCENDING)],
+            unique=True
+        )
         
         # 登入記錄索引
         print("登入記錄索引:")
