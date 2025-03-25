@@ -33,7 +33,7 @@ async def register_user(user: UserCreate):
     - username: 用戶名稱 (必填，唯一)
     - password: 用戶密碼 (必填)
     - phone: 手機號碼 (必填，唯一)
-    - login_type: 登入類型 (預設為 'password')
+    - login_type: 登入類型 (預設為 'normal')
     """
     # 檢查郵箱是否已被註冊
     if users_collection.find_one({"email": user.email}):
@@ -77,10 +77,9 @@ async def register_user(user: UserCreate):
         "updated_at": now
     }
     
-    # 如果是一般註冊，google_id欄位不存在，而不是設為None
-    if user.login_type == "password":
-        # 不設置google_id欄位，完全不包含它
-        pass
+    # 如果是一般註冊，將google_id設為user_id作為臨時值
+    if user.login_type == "normal":
+        user_dict["google_id"] = user_id  # 使用user_id作為臨時的google_id
     else:
         # 其他登入類型（如果有）可以處理google_id
         user_dict["google_id"] = None
@@ -157,7 +156,7 @@ async def login_user(request: Request, user_login: UserLogin):
     # 創建登入記錄
     login_record = {
         "user_id": user["user_id"],
-        "login_method": "password",
+        "login_method": "normal",
         "ip_address": client_ip,
         "device_info": user_agent,
         "created_at": now,
@@ -893,7 +892,7 @@ async def login_with_google(google_data: GoogleLoginRequest):
                             "last_login": datetime.now()
                         }}
                     )
-                elif email_user.get("login_type") == "password":
+                elif email_user.get("login_type") == "normal":
                     # 是一般註冊用戶，不提供自動綁定功能，避免安全問題
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
