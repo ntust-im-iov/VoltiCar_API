@@ -12,7 +12,7 @@ class User(BaseModel):
     phone: Optional[str] = None  # 使用者電話號碼 (唯一，可選)
     password_hash: str  # 使用者密碼雜湊
     google_id: Optional[str] = None  # 若使用Google登入，儲存Google ID
-    login_type: str = "password"  # 登入方式: 'password'(一般註冊) 或 'google'(Google註冊)
+    login_type: str = "normal"  # 登入方式: 'normal'(一般註冊) 或 'google'(Google註冊)
     created_at: datetime.datetime = Field(default_factory=datetime.datetime.now)  # 註冊時間
     updated_at: datetime.datetime = Field(default_factory=datetime.datetime.now)  # 更新時間
 
@@ -25,7 +25,7 @@ class User(BaseModel):
                 "phone": "0912345678",
                 "password_hash": "hashed_password",
                 "google_id": "google123456789",
-                "login_type": "password"
+                "login_type": "normal"
             }
         }
     }
@@ -77,7 +77,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     phone: str
-    login_type: str = "password"  # 預設為一般密碼註冊
+    login_type: str = "normal"  # 預設為一般密碼註冊
 
 # 登錄請求模型
 class UserLogin(BaseModel):
