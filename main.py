@@ -80,11 +80,14 @@ if __name__ == "__main__":
         host = os.getenv("API_HOST", "0.0.0.0")
         port = int(os.getenv("API_PORT", 22000))
         
-        print(f"啟動API服務於 http://{host}:{port}")
-        print(f"API文檔位於 http://{host}:{port}/docs")
-        
-        uvicorn.run(app, host=host, port=port)
+        print(f"啟動API服務於 https://{host}:{port}")
+        print(f"API文檔位於 https://{host}:{port}/docs")
+
+        ssl_keyfile = os.environ.get("SSL_KEYFILE", "C:\\Certbot\\live\\volticar.dynns.com\\privkey.pem")
+        ssl_certfile = os.environ.get("SSL_CERTFILE", "C:\\Certbot\\live\\volticar.dynns.com\\fullchain.pem")
+
+        uvicorn.run(app, host=host, port=port, ssl_keyfile=ssl_keyfile, ssl_certfile=ssl_certfile)
     except Exception as e:
         print(f"啟動服務時發生錯誤: {str(e)}")
         traceback.print_exc()
-        sys.exit(1) 
+        sys.exit(1)

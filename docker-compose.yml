@@ -19,9 +19,12 @@ services:
       - LC_ALL=C.UTF-8
       # Firebase 設置 - 需替換為實際的憑證路徑或內容
       - FIREBASE_CREDENTIALS_PATH=/app/firebase-credentials.json
+      - SSL_KEYFILE=/etc/certs/live/volticar.dynns.com/privkey.pem
+      - SSL_CERTFILE=/etc/certs/live/volticar.dynns.com/fullchain.pem
     volumes:
       - ./app:/app/app
       - ./requirements.txt:/app/requirements.txt
+      - C:\Certbot:/etc/certs
       # 可選：添加Firebase憑證文件的掛載
       # - ./firebase-credentials.json:/app/firebase-credentials.json
     restart: always
@@ -29,12 +32,9 @@ services:
       - volticar-network
     command: >
       sh -c "
-        echo '===== Volticar API Service ====='
-        pip install --no-cache-dir -r requirements.txt
-        pip install --no-cache-dir email-validator
-        uvicorn main:app --host 0.0.0.0 --port 22000
+        uvicorn main:app --host 0.0.0.0 --port 22000 --ssl-keyfile=/etc/certs/live/volticar.dynns.com/privkey.pem --ssl-certfile=/etc/certs/live/volticar.dynns.com/fullchain.pem
       "
 
 networks:
   volticar-network:
-    driver: bridge 
+    driver: bridge
