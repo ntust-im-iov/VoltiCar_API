@@ -55,7 +55,7 @@ async def health_check():
     # 檢查數據庫連接
     from app.database.mongodb import client, volticar_db
     
-    db_status = "正常" if client and volticar_db else "無法連接"
+    db_status = "正常" if client is not None and volticar_db is not None else "無法連接"
     
     return {
         "status": "healthy", 

@@ -76,7 +76,7 @@ class UserCreate(BaseModel):
     username: str
     email: EmailStr
     password: str
-    phone: str
+    phone: Optional[str] = None
     login_type: str = "normal"  # 預設為一般密碼註冊
 
 # 登錄請求模型
@@ -99,6 +99,17 @@ class OTPRequest(BaseModel):
 # OTP驗證模型
 class OTPVerification(BaseModel):
     phone: str
+    otp_code: str
+
+# 綁定請求模型
+class BindRequest(BaseModel):
+    type: str  # 'phone' or 'email'
+    value: str # phone number or email address
+
+# 驗證綁定請求模型
+class VerifyBindingRequest(BaseModel):
+    type: str  # 'phone' or 'email'
+    value: str # phone number or email address
     otp_code: str
 
 # 車輛基本模型
@@ -204,4 +215,4 @@ class GoogleLoginRequest(BaseModel):
                 "picture": "https://lh3.googleusercontent.com/a/profile_picture",
                 "login_type": "google"
             }
-        } 
+        }
