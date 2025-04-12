@@ -87,7 +87,7 @@ python main.py
 docker-compose up -d
 ```
 
-這將構建API鏡像並啟動API容器。API將連接到外部MongoDB數據庫（59.126.6.46:27017）。
+這將構建API鏡像並啟動API容器。API將連接到外部MongoDB數據庫。
 
 2. 查看運行中的容器：
 
@@ -119,7 +119,7 @@ restart.bat
 
 在`.env`文件或Docker環境變量中配置：
 
-- `DATABASE_URL`: MongoDB連接URL（默認指向59.126.6.46:27017）
+- `DATABASE_URL`: MongoDB連接URL
 - `VOLTICAR_DB`: Volticar數據庫名
 - `CHARGE_STATION_DB`: 充電站數據庫名
 - `SECRET_KEY`: JWT認證密鑰
