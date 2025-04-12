@@ -17,11 +17,8 @@ services:
       - PYTHONIOENCODING=utf-8
       - LANG=C.UTF-8
       - LC_ALL=C.UTF-8
-      - FIREBASE_CREDENTIALS_PATH=/app/firebase-credentials.json
     volumes:
       - ./app:/app/app
-      # 可選：添加Firebase憑證文件的掛載
-      # - ./firebase-credentials.json:/app/firebase-credentials.json
     restart: always
     networks:
       - volticar-network
@@ -46,4 +43,4 @@ services:
 
 networks:
   volticar-network:
-    driver: bridge 
+    driver: bridge
