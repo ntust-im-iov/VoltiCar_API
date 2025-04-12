@@ -1,11 +1,19 @@
-from fastapi import APIRouter, HTTPException, status
-from typing import Dict, Any, List
+from fastapi import APIRouter, HTTPException, status, Body # Added Body
+from typing import Dict, Any # Removed List
 from datetime import datetime
+from bson import ObjectId # Import ObjectId
+from pydantic import BaseModel # Added BaseModel
 
-from app.models.user import Achievement
+# Removed Achievement import
 from app.database.mongodb import volticar_db
 
 router = APIRouter(prefix="/achievements", tags=["成就系統"])
+
+# Pydantic 模型用於更新成就進度
+class AchievementUpdate(BaseModel):
+    user_uuid: str
+    achievement_id: str
+    progress: int
 
 # 初始化集合
 achievements_collection = volticar_db["Achievements"]
@@ -51,7 +59,11 @@ async def get_achievements(user_uuid: str):
 
 # 更新成就進度
 @router.post("/update", response_model=Dict[str, Any])
-async def update_achievement(user_uuid: str, achievement_id: str, progress: int):
+async def update_achievement(update_data: AchievementUpdate = Body(...)): # Use Pydantic model
+    user_uuid = update_data.user_uuid
+    achievement_id_str = update_data.achievement_id # Rename to avoid conflict with ObjectId
+    progress = update_data.progress
+
     # 檢查用戶是否存在
     user = users_collection.find_one({"user_uuid": user_uuid})
     if not user:
@@ -59,23 +71,28 @@ async def update_achievement(user_uuid: str, achievement_id: str, progress: int)
             status_code=status.HTTP_404_NOT_FOUND,
             detail="用戶不存在"
         )
-    
-    # 檢查成就是否存在
-    achievement = achievements_collection.find_one({"_id": achievement_id})
+
+    # 檢查成就是否存在 (使用 ObjectId)
+    try:
+        achievement_oid = ObjectId(achievement_id_str)
+        achievement = achievements_collection.find_one({"_id": achievement_oid})
+    except Exception: # Handles invalid ObjectId format
+        achievement = None
+
     if not achievement:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="成就不存在"
+            detail="成就不存在或ID格式錯誤"
         )
-    
+
     # 獲取成就完成所需的目標進度
     target_progress = achievement.get("target_progress", 100)
     
     # 判斷成就是否已解鎖
     unlocked = progress >= target_progress
-    
-    # 更新用戶的成就進度
-    user_achievement_key = f"achievements.{achievement_id}"
+
+    # 更新用戶的成就進度 (使用 achievement_id_str 作為 key)
+    user_achievement_key = f"achievements.{achievement_id_str}"
     users_collection.update_one(
         {"user_uuid": user_uuid},
         {"$set": {
@@ -85,11 +102,11 @@ async def update_achievement(user_uuid: str, achievement_id: str, progress: int)
         }}
     )
     
-    # 如果成就剛剛解鎖，給予獎勵
+    # 如果成就剛剛解鎖，給予獎勵 (使用 achievement_id_str 作為 key)
     if unlocked and (
-        "achievements" not in user or 
-        achievement_id not in user["achievements"] or 
-        not user["achievements"][achievement_id].get("unlocked", False)
+        "achievements" not in user or
+        achievement_id_str not in user["achievements"] or
+        not user["achievements"][achievement_id_str].get("unlocked", False)
     ):
         reward = achievement.get("reward", {})
         if "carbon_credits" in reward:
@@ -103,4 +120,4 @@ async def update_achievement(user_uuid: str, achievement_id: str, progress: int)
         "msg": "成就進度更新成功",
         "progress": progress,
         "unlocked": unlocked
-    } 
+    }
