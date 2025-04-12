@@ -17,21 +17,21 @@ services:
       - PYTHONIOENCODING=utf-8
       - LANG=C.UTF-8
       - LC_ALL=C.UTF-8
-      # Firebase 設置 - 需替換為實際的憑證路徑或內容
-      - FIREBASE_CREDENTIALS_PATH=/app/firebase-credentials.json
       - SSL_KEYFILE=/etc/certs/live/volticar.dynns.com/privkey.pem
       - SSL_CERTFILE=/etc/certs/live/volticar.dynns.com/fullchain.pem
     volumes:
       - ./app:/app/app
       - ./requirements.txt:/app/requirements.txt
+      - ./logs:/app/logs # 新增日誌資料夾映射
       - C:\Certbot:/etc/certs
-      # 可選：添加Firebase憑證文件的掛載
-      # - ./firebase-credentials.json:/app/firebase-credentials.json
     restart: always
     networks:
       - volticar-network
     command: >
       sh -c "
+        chmod +r /etc/certs/live/volticar.dynns.com/privkey.pem /etc/certs/live/volticar.dynns.com/fullchain.pem && \
+        echo 'Attempted to set read permissions on SSL certs.' && \
+        ls -l /etc/certs/live/volticar.dynns.com/privkey.pem /etc/certs/live/volticar.dynns.com/fullchain.pem && \
         uvicorn main:app --host 0.0.0.0 --port 22000 --ssl-keyfile=/etc/certs/live/volticar.dynns.com/privkey.pem --ssl-certfile=/etc/certs/live/volticar.dynns.com/fullchain.pem
       "
 

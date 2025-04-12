@@ -13,9 +13,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # 複製依賴文件
 COPY requirements.txt .
 
+# 安裝系統級依賴項 (用於編譯套件)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc python3-dev && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# 升級 pip 和相關建置工具
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
 # 安裝依賴項
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir email-validator
 
 # 複製應用程序代碼
 COPY . .
@@ -24,4 +32,4 @@ COPY . .
 EXPOSE 22000
 
 # 啟動應用
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "22000"] 
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "22000"]

@@ -46,4 +46,10 @@ ENV/
 .env.local
 .env.development.local
 .env.test.local
-.env.production.local 
+.env.production.local
+
+# Deleted items
+temp_volticar/
+voticar-firebase-adminsdk-*.json
+*.bat
+mongo-init/
