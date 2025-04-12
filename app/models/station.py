@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any # Removed Optional
 
 # 地址模型
 class Address(BaseModel):
@@ -39,7 +39,7 @@ class ChargeStation(BaseModel):
     OperationType: int
     OperatorID: str
     ParkingRate: str
-    PhotoURLs: List = []
+    PhotoURLs: List[str] = [] # Added type hint for list items
     PositionLat: float
     PositionLon: float
     Reference: Reference
@@ -61,7 +61,7 @@ class ChargeStationCreate(BaseModel):
     OperationType: int
     OperatorID: str
     ParkingRate: str
-    PhotoURLs: List = []
+    PhotoURLs: List[str] = [] # Added type hint for list items
     PositionLat: float
     PositionLon: float
     Reference: Dict[str, Any]

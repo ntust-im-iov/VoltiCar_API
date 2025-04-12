@@ -1,7 +1,7 @@
 import os
 import time
 from pymongo import MongoClient, ASCENDING
-from pymongo.errors import ConnectionFailure, DuplicateKeyError, ServerSelectionTimeoutError
+from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError # Removed DuplicateKeyError
 
 # 從環境變量獲取MongoDB連接URL和資料庫名稱
 DATABASE_URL = os.getenv("DATABASE_URL", "mongodb://Volticar:REMOVED_PASSWORD@59.126.6.46:27017/?authSource=admin&ssl=false")
@@ -152,8 +152,8 @@ if client is not None:
         # 獲取集合
         users_collection = volticar_db["Users"]
         login_records_collection = volticar_db["LoginRecords"]
-        otp_records_collection = volticar_db["OTPRecords"]
-        stations_collection = charge_station_db["Stations"]
+        # otp_records_collection = volticar_db["OTPRecords"] # Removed OTP collection
+        # stations_collection = charge_station_db["Stations"] # Removed unused stations_collection
         vehicles_collection = volticar_db["Vehicles"]
         tasks_collection = volticar_db["Tasks"]
         achievements_collection = volticar_db["Achievements"]
@@ -175,20 +175,20 @@ if client is not None:
         safely_create_index(users_collection, "user_id", unique=True)
         safely_create_index(users_collection, "email", unique=True)
         safely_create_index(users_collection, "username", unique=True)
-        safely_create_index(users_collection, "phone", unique=True)
-        safely_create_index(users_collection, "google_id", unique=True)  # google_id使用一般的唯一索引
-        safely_create_index(users_collection, "login_type")  # 添加login_type索引
-        
+        # Phone index creation removed as it's handled manually or differently
+        safely_create_index(users_collection, "google_id", unique=True)
+        safely_create_index(users_collection, "login_type")
+
         # 登入記錄索引
         print("登入記錄索引:")
         safely_create_index(login_records_collection, "user_id")
         safely_create_index(login_records_collection, "login_timestamp")
-        
-        # OTP記錄索引
-        print("OTP記錄索引:")
-        safely_create_index(otp_records_collection, "user_id")
-        safely_create_index(otp_records_collection, "expires_at")
-        
+
+        # OTP記錄索引 (Removed)
+        # print("OTP記錄索引:")
+        # safely_create_index(otp_records_collection, "user_id")
+        # safely_create_index(otp_records_collection, "expires_at")
+
         # 車輛索引
         print("車輛索引:")
         safely_create_index(vehicles_collection, "vehicle_id", unique=True)
@@ -215,8 +215,8 @@ if client is not None:
         charge_station_db = None
         users_collection = None
         login_records_collection = None
-        otp_records_collection = None
-        stations_collection = None
+        # otp_records_collection = None # Removed
+        # stations_collection = None # Removed
         vehicles_collection = None
         tasks_collection = None
         achievements_collection = None
@@ -227,8 +227,8 @@ else:
     charge_station_db = None
     users_collection = None
     login_records_collection = None
-    otp_records_collection = None
-    stations_collection = None
+    # otp_records_collection = None # Removed
+    # stations_collection = None # Removed
     vehicles_collection = None
     tasks_collection = None
     achievements_collection = None
@@ -261,4 +261,4 @@ def get_charge_station_collection(city=None):
     except Exception as e:
         print(f"獲取充電站集合失敗: {str(e)}")
         # 返回空數組或空集合，避免應用崩潰
-        return [] if not city else None 
+        return [] if not city else None

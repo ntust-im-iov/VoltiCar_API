@@ -1,13 +1,20 @@
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Body # Added Body
 from typing import List, Dict, Any
 from datetime import datetime
+from pydantic import BaseModel # Added BaseModel
 
-from app.models.user import VehicleBase, VehicleCreate, VehicleUpdate
+from app.models.user import VehicleCreate, VehicleUpdate # Removed VehicleBase
 from app.database.mongodb import volticar_db
-from app.utils.auth import get_current_user
+# Removed get_current_user
 from app.utils.helpers import handle_mongo_data
 
 router = APIRouter(prefix="/vehicles", tags=["車輛"])
+
+# 新增 Pydantic 模型用於更新電池信息
+class VehicleBatteryUpdate(BaseModel):
+    battery_level: int
+    battery_health: int
+    lastcharge_mileage: int
 
 # 初始化集合
 vehicles_collection = volticar_db["Vehicles"]
@@ -28,18 +35,25 @@ async def get_vehicle_info(user_id: str, vehicle_id: str):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="找不到指定車輛"
         )
-    
-    # 處理ObjectId並返回結果
+
+    # 使用 handle_mongo_data 處理 ObjectId
+    processed_vehicle = handle_mongo_data(vehicle)
+
+    # 返回處理後的結果
     return {
         "status": "success",
         "msg": "獲取車輛信息成功",
-        "vehicle_info": {
-            "vehicle_name": vehicle.get("vehicle_name", ""),
-            "battery_level": vehicle.get("battery_level", 0),
-            "battery_health": vehicle.get("battery_health", 100),
-            "mileage": vehicle.get("mileage", 0)
-        }
+        # Return the processed data, accessing fields safely
+        "vehicle_info": processed_vehicle # Return the whole processed document
+        # Example of accessing specific fields if needed:
+        # "vehicle_info": {
+        #     "vehicle_name": processed_vehicle.get("vehicle_name", ""),
+        #     "battery_level": processed_vehicle.get("battery_level", 0),
+        #     "battery_health": processed_vehicle.get("battery_health", 100),
+        #     "mileage": processed_vehicle.get("mileage", 0)
+        # }
     }
+
 
 # 添加/註冊新車輛
 @router.post("/", response_model=Dict[str, Any])
@@ -65,7 +79,7 @@ async def register_vehicle(vehicle: VehicleCreate):
     vehicle_data = {
         "user_id": vehicle.user_id,
         "vehicle_id": vehicle.vehicle_id,
-        "vehicle_name": vehicle.vehicle_name if hasattr(vehicle, 'vehicle_name') else "",
+        "vehicle_name": vehicle.vehicle_name or "", # Simplified access
         "battery_level": 0,
         "battery_health": 100,
         "mileage": 0,
@@ -89,42 +103,36 @@ async def register_vehicle(vehicle: VehicleCreate):
         "vehicle_id": vehicle.vehicle_id
     }
 
-# 更新車輛電池信息
-@router.post("/{vehicle_id}/battery", response_model=Dict[str, Any])
-async def update_battery_info(vehicle_id: str, battery_level: int, battery_health: int, lastcharge_mileage: int):
+# 更新車輛電池信息 (使用請求體)
+@router.put("/{vehicle_id}/battery", response_model=Dict[str, Any]) # Changed to PUT for update
+async def update_battery_info(vehicle_id: str, battery_update: VehicleBatteryUpdate = Body(...)):
     """
-    更新車輛電池資訊
+    更新車輛電池資訊 (使用請求體)
     - vehicle_id: 車輛ID
-    - battery_level: 電池電量 (0-100)
-    - battery_health: 電池健康度 (0-100)
-    - lastcharge_mileage: 上次充電後的里程
+    - Request Body: 包含 battery_level, battery_health, lastcharge_mileage
     """
-    # 檢查車輛是否存在
-    vehicle = vehicles_collection.find_one({"vehicle_id": vehicle_id})
-    
-    if not vehicle:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="找不到指定車輛"
-        )
-    
-    # 更新數據
+    # 直接嘗試更新數據，移除 find_one 檢查
     result = vehicles_collection.update_one(
         {"vehicle_id": vehicle_id},
         {"$set": {
-            "battery_level": battery_level,
-            "battery_health": battery_health,
-            "lastcharge_mileage": lastcharge_mileage,
+            "battery_level": battery_update.battery_level,
+            "battery_health": battery_update.battery_health,
+            "lastcharge_mileage": battery_update.lastcharge_mileage,
             "last_updated": datetime.now()
         }}
     )
-    
+
+    # 如果 modified_count 為 0，表示未找到車輛或數據未變更
     if result.modified_count == 0:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="更新車輛信息失敗"
-        )
-    
+        # 檢查文檔是否存在以區分 404 和無變更
+        if vehicles_collection.count_documents({"vehicle_id": vehicle_id}) == 0:
+             raise HTTPException(
+                 status_code=status.HTTP_404_NOT_FOUND,
+                 detail="找不到指定車輛"
+             )
+        # else: # 如果文檔存在但未修改，可以選擇返回成功或特定訊息
+        #     return {"status": "success", "msg": "車輛電池信息無變更"}
+
     return {
         "status": "success",
         "msg": "車輛電池信息更新成功"
@@ -136,18 +144,8 @@ async def update_vehicle(vehicle_id: str, vehicle: VehicleUpdate):
     """
     更新車輛基本資訊
     - vehicle_id: 車輛ID
-    - vehicle_name: 車輛名稱
-    - mileage: 總里程
+    - Request Body: 包含 vehicle_name, mileage
     """
-    # 檢查車輛是否存在
-    existing_vehicle = vehicles_collection.find_one({"vehicle_id": vehicle_id})
-    
-    if not existing_vehicle:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="找不到指定車輛"
-        )
-    
     # 準備更新數據
     update_data = {}
     if vehicle.vehicle_name is not None:
@@ -162,19 +160,24 @@ async def update_vehicle(vehicle_id: str, vehicle: VehicleUpdate):
         )
     
     update_data["last_updated"] = datetime.now()
-    
-    # 更新數據
+
+    # 直接嘗試更新數據，移除 find_one 檢查
     result = vehicles_collection.update_one(
         {"vehicle_id": vehicle_id},
         {"$set": update_data}
     )
-    
+
+    # 如果 modified_count 為 0，表示未找到車輛或數據未變更
     if result.modified_count == 0:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="更新車輛信息失敗"
-        )
-    
+         # 檢查文檔是否存在以區分 404 和無變更
+        if vehicles_collection.count_documents({"vehicle_id": vehicle_id}) == 0:
+             raise HTTPException(
+                 status_code=status.HTTP_404_NOT_FOUND,
+                 detail="找不到指定車輛"
+             )
+        # else: # 如果文檔存在但未修改，可以選擇返回成功或特定訊息
+        #     return {"status": "success", "msg": "車輛資訊無變更"}
+
     return {
         "status": "success",
         "msg": "車輛資訊更新成功"
@@ -206,4 +209,4 @@ async def get_user_vehicles(user_id: str):
         "status": "success",
         "msg": "獲取用戶車輛列表成功",
         "vehicles": formatted_vehicles
-    } 
+    }

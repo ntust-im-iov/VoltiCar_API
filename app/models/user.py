@@ -1,44 +1,50 @@
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Dict, Any
-import datetime
+from datetime import datetime # Changed import
 from bson import ObjectId
 
-# 用戶模型 (Users 集合)
+# 用戶模型 (Users 集合) - 代表資料庫中的完整用戶文檔結構
 class User(BaseModel):
-    id: Optional[str] = None  # ObjectId 作為主鍵
-    user_id: str  # 使用者唯一識別碼 (由MongoDB自動生成)
-    email: EmailStr  # 使用者電子信箱 (唯一)
-    username: str  # 使用者名稱 (唯一)
-    phone: Optional[str] = None  # 使用者電話號碼 (唯一，可選)
-    password_hash: str  # 使用者密碼雜湊
-    google_id: Optional[str] = None  # 若使用Google登入，儲存Google ID
-    login_type: str = "normal"  # 登入方式: 'normal'(一般註冊) 或 'google'(Google註冊)
-    created_at: datetime.datetime = Field(default_factory=datetime.datetime.now)  # 註冊時間
-    updated_at: datetime.datetime = Field(default_factory=datetime.datetime.now)  # 更新時間
+    id: Optional[str] = None  # MongoDB ObjectId (_id)
+    user_id: str  # 應用程式生成的唯一 ID
+    email: EmailStr
+    username: str
+    phone: Optional[str] = None
+    password_hash: Optional[str] = None # Google 登入用戶可能沒有密碼
+    google_id: Optional[str] = None
+    login_type: str = "normal"
+    reset_password_token: Optional[str] = None
+    reset_password_token_expires_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+    # 其他可能的用戶欄位，例如 fcm_token, achievements, tasks, friends, carbon_credits 等
+    # 這些可以在需要時添加到模型中，或者保持 User 模型只包含核心身份信息
 
     model_config = {
-        "from_attributes": True,
+        "from_attributes": True, # 允許從 ORM 對象或其他屬性創建模型
         "json_schema_extra": {
             "example": {
+                "user_id": "uuid-generated-id",
                 "email": "user@example.com",
                 "username": "username",
                 "phone": "0912345678",
-                "password_hash": "hashed_password",
-                "google_id": "google123456789",
-                "login_type": "normal"
+                "login_type": "normal",
+                "google_id": None,
             }
         }
     }
 
-# 登入記錄模型 (LoginRecords 集合)
+# --- Request/Response Models Used in Routes ---
+
+# 登入記錄模型 (LoginRecords 集合) - Used implicitly by user_routes.py/get_login_records
 class LoginRecord(BaseModel):
-    id: Optional[str] = None  # ObjectId 作為主鍵
-    user_id: str  # 關聯到Users集合的user_id
-    login_method: str  # 登入方式 (帳號密碼/Google等)
-    ip_address: str  # 使用者登入IP位址
-    device_info: str  # 裝置資訊 (如瀏覽器+手機型號)
-    created_at: datetime.datetime = Field(default_factory=datetime.datetime.now)  # 創建時間
-    login_timestamp: datetime.datetime = Field(default_factory=datetime.datetime.now)  # 登入時間戳
+    id: Optional[str] = None
+    user_id: str
+    login_method: str
+    ip_address: str
+    device_info: str
+    created_at: datetime = Field(default_factory=datetime.now)
+    login_timestamp: datetime = Field(default_factory=datetime.now)
 
     model_config = {
         "from_attributes": True,
@@ -52,112 +58,44 @@ class LoginRecord(BaseModel):
         }
     }
 
-# OTP驗證碼模型 (OTPRecords 集合)
-class OTPRecord(BaseModel):
-    id: Optional[str] = None  # ObjectId 作為主鍵
-    user_id: str  # 關聯到Users集合的user_id
-    otp_code: str  # 產生的OTP驗證碼 (加密存儲)
-    expires_at: datetime.datetime  # 驗證碼過期時間
-    created_at: datetime.datetime = Field(default_factory=datetime.datetime.now)  # 產生時間
-
-    model_config = {
-        "from_attributes": True,
-        "json_schema_extra": {
-            "example": {
-                "user_id": "user123",
-                "otp_code": "123456",
-                "expires_at": "2023-03-23T10:20:30Z"
-            }
-        }
-    }
-
-# 創建用戶請求模型
+# 創建用戶請求模型 - Used by user_routes.py/register_user
 class UserCreate(BaseModel):
     username: str
     email: EmailStr
     password: str
     phone: Optional[str] = None
-    login_type: str = "normal"  # 預設為一般密碼註冊
+    login_type: str = "normal"
 
-# 登錄請求模型
+# 登錄請求模型 - Used by user_routes.py/login_user
 class UserLogin(BaseModel):
     username: Optional[str] = None
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     password: str
 
-# 令牌模型
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-    user_id: str
-
-# OTP請求模型
-class OTPRequest(BaseModel):
-    phone: str
-    
-# OTP驗證模型
-class OTPVerification(BaseModel):
-    phone: str
-    otp_code: str
-
-# 綁定請求模型
+# 綁定請求模型 - Used by user_routes.py/request_bind
 class BindRequest(BaseModel):
-    type: str  # 'phone' or 'email'
-    value: str # phone number or email address
+    type: str
+    value: str
 
-# 驗證綁定請求模型
+# 驗證綁定請求模型 - Used by user_routes.py/verify_binding
 class VerifyBindingRequest(BaseModel):
-    type: str  # 'phone' or 'email'
-    value: str # phone number or email address
+    type: str
+    value: str
     otp_code: str
 
-# 車輛基本模型
-class VehicleBase(BaseModel):
-    vehicle_id: str
-
-# 車輛創建模型
+# 車輛創建模型 - Used by vehicle_routes.py/register_vehicle
 class VehicleCreate(BaseModel):
     vehicle_id: str
     user_id: str
     vehicle_name: Optional[str] = None
 
-# 車輛更新模型
+# 車輛更新模型 - Used by vehicle_routes.py/update_vehicle
 class VehicleUpdate(BaseModel):
     vehicle_name: Optional[str] = None
     mileage: Optional[int] = None
 
-# 任務模型
-class Task(BaseModel):
-    task_id: str
-    description: str
-    progress: int = 0
-    reward: Dict[str, Any] = {}
-
-# 成就模型
-class Achievement(BaseModel):
-    achievement_id: str
-    description: str
-    progress: int = 0
-    unlocked: bool = False
-
-# 排行榜項目模型
-class LeaderboardItem(BaseModel):
-    user_id: str
-    score: int
-
-# 獎勵項目模型
-class RewardItem(BaseModel):
-    item_id: str
-    name: str
-    description: Optional[str] = None
-    price: int = 0
-
-# 物品庫模型
-class Inventory(BaseModel):
-    owned_items: List[Dict[str, Any]] = []
-
-# FCM令牌更新模型
+# FCM令牌更新模型 - Used by user_routes.py/update_fcm_token
 class FCMTokenUpdate(BaseModel):
     user_id: str
     fcm_token: str
@@ -173,41 +111,22 @@ class FCMTokenUpdate(BaseModel):
         }
     }
 
-# 好友操作模型
+# 好友操作模型 - Used by user_routes.py/manage_friends
 class FriendAction(BaseModel):
-    """好友操作請求模型"""
     user_id: str
     friend_id: str
-    action: str  # add, remove
+    action: str
 
-# 充電站模型
-class Station(BaseModel):
-    station_id: str
-    name: str
-    address: str
-    city: str
-    latitude: float
-    longitude: float
-    available: bool = True
-    distance: Optional[float] = None
-
-# 數據庫存儲的用戶模型
-class UserInDB(UserCreate):
-    user_id: str
-    password_hash: str
-    created_at: datetime.datetime = Field(default_factory=datetime.datetime.now)
-    updated_at: datetime.datetime = Field(default_factory=datetime.datetime.now)
-
+# Google登入請求模型 - Used by user_routes.py/login_with_google
 class GoogleLoginRequest(BaseModel):
-    """Google登入請求模型"""
-    google_id: str = None
-    email: str = None
-    name: str = None
-    picture: str = None
-    login_type: str = "google"  # 固定為Google登入
-    
-    class Config:
-        json_schema_extra = {
+    google_id: Optional[str] = None # Made Optional as per usage
+    email: Optional[str] = None # Made Optional as per usage
+    name: Optional[str] = None # Made Optional as per usage
+    picture: Optional[str] = None # Made Optional as per usage
+    login_type: str = "google"
+
+    model_config = { # Changed from Config to model_config
+        "json_schema_extra": {
             "example": {
                 "google_id": "109554286477309922371",
                 "email": "user@gmail.com",
@@ -216,3 +135,4 @@ class GoogleLoginRequest(BaseModel):
                 "login_type": "google"
             }
         }
+    } # Add missing closing brace

@@ -1,29 +1,25 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Request
-from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
+# Removed OAuth2PasswordRequestForm as it's not directly used in functions
 from datetime import timedelta, datetime
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any, Optional
 import uuid
-import random
-import string
 import os
+import secrets
+from pydantic import EmailStr, BaseModel
 
 from app.models.user import (
-    User, UserCreate, UserInDB, Token, UserLogin, OTPRequest, OTPVerification, OTPRecord,
-    LoginRecord, Task, Achievement, LeaderboardItem, RewardItem, Inventory, FCMTokenUpdate,
-    FriendAction, Station, GoogleLoginRequest, BindRequest, VerifyBindingRequest # Added BindRequest, VerifyBindingRequest
-)
+    User, UserCreate, UserLogin, # LoginRecord is imported but not used as type hint/response model
+    FCMTokenUpdate, FriendAction, GoogleLoginRequest, BindRequest, VerifyBindingRequest
+) # Removed LoginRecord model import
 from app.utils.auth import authenticate_user, create_access_token, get_current_user, get_password_hash
 from app.database.mongodb import (
-    volticar_db, users_collection, login_records_collection, otp_records_collection,
-    tasks_collection, achievements_collection, rewards_collection
+    volticar_db, users_collection, login_records_collection,
+    tasks_collection, achievements_collection, rewards_collection # Added missing collections back
 )
-# from app.services.otp_service import send_otp, verify_otp # Commented out OTP service import
-from app.utils.helpers import handle_mongo_data
 
 router = APIRouter(prefix="/users", tags=["用戶"])
 
-# 訪問令牌的過期時間（以分鐘為單位）
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7天過期
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days
 
 # 創建新用戶 (註冊)
 @router.post("/register", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
@@ -72,8 +68,8 @@ async def register_user(user: UserCreate):
         "email": user.email,
         "username": user.username,
         "password_hash": hashed_password,
-        "phone": user.phone, # Phone is now optional
-        "login_type": user.login_type,  # 使用模型中的login_type
+        "phone": user.phone if user.phone else None,
+        "login_type": user.login_type,
         "created_at": now,
         "updated_at": now
     }
@@ -82,8 +78,9 @@ async def register_user(user: UserCreate):
     if user.login_type == "normal":
         user_dict["google_id"] = user_id  # 使用user_id作為臨時的google_id
     else:
-        # 其他登入類型（如果有）可以處理google_id
-        user_dict["google_id"] = None
+         user_dict["google_id"] = None
+
+    print(f"Attempting to insert user data: {user_dict}")
 
     # 插入到數據庫
     result = users_collection.insert_one(user_dict)
@@ -131,7 +128,6 @@ async def login_user(request: Request, user_login: UserLogin):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # 驗證密碼 - 注意password_hash字段名更新
     authenticated = authenticate_user(user, user_login.password, password_field="password_hash")
 
     if not authenticated:
@@ -163,7 +159,7 @@ async def login_user(request: Request, user_login: UserLogin):
         "created_at": now,
         "login_timestamp": now
     }
-    print(f"保存登入記錄: {login_record}")  # 添加日誌輸出以便調試
+    print(f"保存登入記錄: {login_record}")
     login_records_collection.insert_one(login_record)
 
     # 創建訪問令牌
@@ -206,14 +202,9 @@ async def request_bind(
     if existing_user and existing_user["user_id"] != current_user["user_id"]:
         raise HTTPException(status_code=400, detail=f"此 {bind_type} 已被其他帳號綁定")
 
-    # TODO: Uncomment when OTP service is ready
-    # success, message = await send_otp(bind_value)
-    # if not success:
-    #     raise HTTPException(status_code=500, detail=f"發送驗證碼失敗: {message}")
-
+    # OTP sending logic removed as service is disabled
     print(f"[綁定請求] 類型: {bind_type}, 值: {bind_value}, 用戶ID: {current_user['user_id']}")
-    # Placeholder response since OTP is disabled
-    return {"status": "success", "msg": "驗證碼請求已收到 (OTP功能暫未啟用)"}
+    return {"status": "success", "msg": "綁定請求已收到 (OTP功能暫未啟用，請使用測試驗證碼)"}
 
 # Verify Binding (Phone or Email)
 @router.post("/verify-bind", response_model=Dict[str, Any])
@@ -235,172 +226,127 @@ async def verify_binding(
     if bind_type not in ["phone", "email"]:
         raise HTTPException(status_code=400, detail="無效的綁定類型")
 
-    # TODO: Uncomment when OTP service is ready
-    # verified, message = await verify_otp(bind_value, otp_code)
-    # if not verified:
-    #     raise HTTPException(status_code=400, detail=f"驗證碼錯誤或已過期: {message}")
-
-    # Placeholder verification logic
+    # OTP verification logic removed as service is disabled
+    # Placeholder verification logic using a fixed code
     print(f"[驗證綁定] 類型: {bind_type}, 值: {bind_value}, 驗證碼: {otp_code}, 用戶ID: {current_user['user_id']}")
-    if otp_code != "123456": # Placeholder check
-         raise HTTPException(status_code=400, detail="驗證碼錯誤 (測試模式)")
+    if otp_code != "123456": # Placeholder check for testing
+         raise HTTPException(status_code=400, detail="驗證碼錯誤 (測試模式，請使用 123456)")
 
-    # TODO: Uncomment when OTP service is ready
-    # # Update user document in the database
-    # update_result = users_collection.update_one(
-    #     {"user_id": current_user["user_id"]},
-    #     {"$set": {bind_type: bind_value, "updated_at": datetime.now()}}
-    # )
-    # if update_result.modified_count == 0:
-    #      # Handle case where user might not exist or update failed
-    #      pass # Or raise an error
+    # Database update logic removed as OTP is disabled
+    # In a real scenario, update would happen here after successful verification
+    print(f"驗證成功 (測試模式)，用戶 {current_user['user_id']} 的 {bind_type} ({bind_value}) 未實際更新資料庫。")
 
-    return {"status": "success", "msg": f"{bind_type} 綁定成功 (測試模式)"}
+    return {"status": "success", "msg": f"{bind_type} 驗證成功 (測試模式)"}
 
 
-# --- Existing OTP Endpoints (Commented out for now) ---
+# --- Password Reset Endpoints ---
 
-# # 發送OTP驗證碼
-# @router.post("/send-otp", response_model=Dict[str, Any])
-# async def send_otp_endpoint(request: OTPRequest): # Renamed to avoid conflict
-#     """
-#     發送OTP驗證碼
-#     - phone: 手機號碼 (必填，台灣格式09開頭)
-#     """
-#     print(f"收到發送OTP請求，手機號碼：{request.phone}")
+class ForgotPasswordRequest(BaseModel):
+    """忘記密碼請求模型"""
+    identifier: str # 可以是 email 或 phone
 
-#     # 檢查手機號碼格式是否正確（台灣手機號碼格式）
-#     if not request.phone or not (request.phone.startswith('09') and len(request.phone) == 10):
-#         print(f"手機號碼格式不正確：{request.phone}")
-#         raise HTTPException(
-#             status_code=status.HTTP_400_BAD_REQUEST,
-#             detail="手機號碼格式不正確，應為台灣手機號碼格式（09開頭，共10位數）"
-#         )
+class ResetPasswordRequest(BaseModel):
+    """重設密碼請求模型"""
+    token: str
+    new_password: str
 
-#     # 查詢該手機號對應的用戶
-#     user = users_collection.find_one({"phone": request.phone})
-#     user_id = user["user_id"] if user else f"unregistered_{request.phone}"
+@router.post("/forgot-password", response_model=Dict[str, Any])
+async def forgot_password(request_data: ForgotPasswordRequest):
+    """
+    請求重設密碼
+    - identifier: 用戶的電子郵件或手機號碼
+    """
+    identifier = request_data.identifier
+    now = datetime.now()
+    expires_delta = timedelta(hours=1) # 權杖有效期 1 小時
+    expires_at = now + expires_delta
 
-#     # 生成6位數驗證碼
-#     otp_code = ''.join(random.choices(string.digits, k=6))
-#     print(f"生成的OTP驗證碼：{otp_code} 將發送給 {request.phone}")
+    # 嘗試透過 email 或 phone 尋找用戶
+    user = users_collection.find_one({"$or": [{"email": identifier}, {"phone": identifier}]})
 
-#     # 獲取當前時間
-#     now = datetime.now()
+    if not user:
+        # 即使找不到用戶，也返回成功訊息以避免洩露用戶資訊
+        print(f"請求重設密碼，但找不到用戶: {identifier}")
+        return {"status": "success", "msg": "如果您的帳戶存在，重設密碼的指示已發送。"}
 
-#     # 存儲OTP驗證碼
-#     otp_data = {
-#         "user_id": user_id,
-#         "otp_code": otp_code,
-#         "created_at": now,
-#         "expires_at": now + timedelta(minutes=10)  # 驗證碼10分鐘後過期
-#     }
+    # 生成安全的重設權杖
+    reset_token = secrets.token_urlsafe(32)
 
-#     # 刪除舊的OTP驗證碼
-#     delete_result = otp_records_collection.delete_many({"user_id": user_id})
-#     print(f"刪除舊OTP驗證碼：{delete_result.deleted_count} 條記錄")
+    # 更新用戶資料庫，儲存權杖和到期時間
+    update_result = users_collection.update_one(
+        {"_id": user["_id"]},
+        {"$set": {
+            "reset_password_token": reset_token,
+            "reset_password_token_expires_at": expires_at,
+            "updated_at": now
+        }}
+    )
 
-#     # 插入新的OTP驗證碼
-#     otp_records_collection.insert_one(otp_data)
-#     print(f"新的OTP驗證碼記錄已插入數據庫")
+    if update_result.modified_count == 0:
+         raise HTTPException(status_code=500, detail="無法更新用戶重設密碼權杖")
 
-#     # FCM推播實現
-#     # 如果在生產環境且找到用戶的FCM令牌，使用FCM發送驗證碼
-#     if os.getenv("API_ENV") == "production" and user and "fcm_token" in user and user["fcm_token"]:
-#         try:
-#             # 使用FCM發送驗證碼
-#             from app.services.firebase_service import send_verification_code_notification
-#             fcm_result = await send_verification_code_notification(
-#                 user["fcm_token"],
-#                 otp_code,
-#                 10  # 驗證碼有效期10分鐘
-#             )
+    # 根據 identifier 類型決定發送方式
+    # 郵件發送邏輯已移除，將由外部服務處理
+    if "@" in identifier and identifier == user.get("email"): # 確保是 email
+        print(f"已為郵箱 {user['email']} 生成重設密碼權杖: {reset_token} (郵件發送由外部服務處理)")
+        return {"status": "success", "msg": "如果您的帳戶存在，重設密碼的指示將很快發送。"}
+    elif identifier == user.get("phone"): # 確保是 phone
+        # 手機號碼處理 (目前僅記錄，待實現 SMS 服務)
+        print(f"收到手機號碼 {identifier} 的重設密碼請求，權杖: {reset_token} (SMS 功能待實現)")
+        # 在實際應用中，這裡應該觸發 SMS 發送
+        return {"status": "success", "msg": "如果您的帳戶存在且綁定了此手機號，重設密碼的指示將發送給您 (目前 SMS 功能待實現)。"}
+    else:
+        # Identifier 不匹配用戶記錄中的 email 或 phone
+         print(f"請求的 identifier {identifier} 與找到的用戶 {user['user_id']} 不匹配")
+         # 仍然返回通用成功訊息
+         return {"status": "success", "msg": "如果您的帳戶存在，重設密碼的指示將很快發送。"}
 
-#             if fcm_result["success"]:
-#                 print(f"驗證碼通過FCM成功發送到設備，消息ID: {fcm_result['message_id']}")
-#                 return {
-#                     "status": "success",
-#                     "msg": "驗證碼已通過應用推播發送",
-#                     "sent_via": "fcm"
-#                 }
-#             else:
-#                 print(f"FCM發送失敗: {fcm_result.get('error')}")
-#                 # FCM發送失敗，回退到測試模式
-#         except Exception as e:
-#             print(f"FCM發送異常: {str(e)}")
-#             # 發生異常，回退到測試模式
 
-#     # 測試環境或FCM發送失敗時，直接返回驗證碼
-#     print(f"[測試環境] OTP驗證碼 {otp_code} 已生成，但未通過推播發送")
-#     return {
-#         "status": "success",
-#         "msg": "驗證碼已生成",
-#         "otp_code": otp_code,  # 測試環境返回驗證碼
-#         "test_mode": True,
-#         "sent_via": "api_response"
-#     }
+@router.post("/reset-password", response_model=Dict[str, Any])
+async def reset_password(request_data: ResetPasswordRequest):
+    """
+    使用權杖重設密碼
+    - token: 從郵件或簡訊收到的重設權杖
+    - new_password: 新密碼
+    """
+    token = request_data.token
+    new_password = request_data.new_password
+    now = datetime.now()
 
-# # 驗證OTP
-# @router.post("/verify-otp", response_model=Dict[str, Any])
-# async def verify_otp_endpoint(verification: OTPVerification): # Renamed to avoid conflict
-#     """
-#     驗證OTP驗證碼
-#     - phone: 手機號碼 (必填，台灣格式09開頭)
-#     - otp_code: OTP驗證碼 (必填，6位數字)
-#     """
-#     print(f"收到OTP驗證請求，手機號碼：{verification.phone}，驗證碼：{verification.otp_code}")
+    # 尋找使用此權杖且權杖未過期的用戶
+    user = users_collection.find_one({
+        "reset_password_token": token,
+        "reset_password_token_expires_at": {"$gt": now}
+    })
 
-#     # 檢查手機號碼格式是否正確
-#     if not verification.phone or not (verification.phone.startswith('09') and len(verification.phone) == 10):
-#         print(f"手機號碼格式不正確：{verification.phone}")
-#         raise HTTPException(
-#             status_code=status.HTTP_400_BAD_REQUEST,
-#             detail="手機號碼格式不正確，應為台灣手機號碼格式（09開頭，共10位數）"
-#         )
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="無效或已過期的重設密碼權杖"
+        )
 
-#     # 查詢該手機號對應的用戶
-#     user = users_collection.find_one({"phone": verification.phone})
-#     user_id = user["user_id"] if user else f"unregistered_{verification.phone}"
+    # 驗證新密碼強度 (可選，但建議)
+    if len(new_password) < 8:
+         raise HTTPException(status_code=400, detail="新密碼長度至少需要8位")
 
-#     # 查詢最新的OTP記錄
-#     otp_record = otp_records_collection.find_one(
-#         {"user_id": user_id},
-#         sort=[("created_at", -1)]
-#     )
+    # 更新密碼
+    hashed_password = get_password_hash(new_password)
+    update_result = users_collection.update_one(
+        {"_id": user["_id"]},
+        {"$set": {
+            "password_hash": hashed_password,
+            "updated_at": now,
+            "reset_password_token": None, # 清除權杖
+            "reset_password_token_expires_at": None # 清除到期時間
+        }}
+    )
 
-#     if not otp_record:
-#         print(f"找不到用戶ID {user_id} 的OTP驗證碼記錄")
-#         raise HTTPException(
-#             status_code=status.HTTP_400_BAD_REQUEST,
-#             detail="找不到驗證碼記錄，請重新發送驗證碼"
-#         )
+    if update_result.modified_count == 0:
+        raise HTTPException(status_code=500, detail="重設密碼失敗")
 
-#     # 檢查驗證碼是否過期
-#     if otp_record["expires_at"] < datetime.now():
-#         print(f"OTP驗證碼已過期，過期時間: {otp_record['expires_at']}")
-#         raise HTTPException(
-#             status_code=status.HTTP_400_BAD_REQUEST,
-#             detail="驗證碼已過期，請重新獲取"
-#         )
+    print(f"用戶 {user['user_id']} 已成功重設密碼")
+    return {"status": "success", "msg": "密碼已成功重設"}
 
-#     # 檢查驗證碼是否正確
-#     if otp_record["otp_code"] != verification.otp_code:
-#         print(f"OTP驗證碼不匹配: 輸入 {verification.otp_code}, 預期 {otp_record['otp_code']}")
-#         raise HTTPException(
-#             status_code=status.HTTP_400_BAD_REQUEST,
-#             detail="驗證碼不正確"
-#         )
-
-#     # 驗證成功，刪除OTP記錄
-#     otp_records_collection.delete_one({"_id": otp_record["_id"]})
-#     print(f"OTP驗證成功，已刪除驗證碼記錄 ID: {otp_record['_id']}")
-
-#     return {
-#         "status": "success",
-#         "msg": "驗證碼驗證成功",
-#         "verified": True,
-#         "user_id": user["user_id"] if user else None
-#     }
 
 # --- Other Endpoints ---
 
@@ -415,66 +361,13 @@ async def get_user_profile(current_user: Dict = Depends(get_current_user)):
         "username": current_user.get("username", ""),
         "user_id": current_user.get("user_id", ""),
         "email": current_user.get("email", ""),
-        "phone": current_user.get("phone", "") # Phone might be None now
+        "phone": current_user.get("phone", "")
     }
 
     return {
         "status": "success",
         "msg": "獲取用戶資訊成功",
         "user_info": user_info
-    }
-
-# 測試OTP功能
-@router.get("/test-otp/{phone}", response_model=Dict[str, Any])
-async def test_otp(phone: str):
-    """
-    測試OTP功能 (僅開發環境使用)
-    - phone: 手機號碼 (必填，台灣格式09開頭)
-    """
-    print(f"測試OTP功能，手機號碼：{phone}")
-
-    # 檢查手機號碼格式
-    if not phone or not (phone.startswith('09') and len(phone) == 10):
-        return {
-            "status": "error",
-            "msg": "手機號碼格式不正確，應為台灣手機號碼格式（09開頭，共10位數）"
-        }
-
-    # 查詢該手機號對應的用戶
-    user = users_collection.find_one({"phone": phone})
-    user_id = user["user_id"] if user else f"unregistered_{phone}"
-
-    # 查詢該用戶的最新OTP驗證碼
-    otp_record = otp_records_collection.find_one(
-        {"user_id": user_id},
-        sort=[("created_at", -1)]
-    )
-
-    if not otp_record:
-        return {
-            "status": "error",
-            "msg": "未找到OTP驗證碼記錄，請先發送驗證碼"
-        }
-
-    # 檢查驗證碼是否過期
-    if otp_record["expires_at"] < datetime.now():
-        return {
-            "status": "error",
-            "msg": "OTP驗證碼已過期",
-            "expires_at": otp_record["expires_at"],
-            "current_time": datetime.now()
-        }
-
-    return {
-        "status": "success",
-        "msg": "找到有效的OTP驗證碼",
-        "phone": phone,
-        "otp_code": otp_record["otp_code"],
-        "created_at": otp_record["created_at"],
-        "expires_at": otp_record["expires_at"],
-        "current_time": datetime.now(),
-        "is_expired": otp_record["expires_at"] < datetime.now(),
-        "remaining_time": (otp_record["expires_at"] - datetime.now()).total_seconds() // 60
     }
 
 # FCM令牌更新
@@ -535,43 +428,6 @@ async def check_phone_exists(phone: str):
         "status": "success",
         "msg": "檢查完成",
         "exists": user_exists
-    }
-
-# 查詢登入記錄（測試用）
-@router.get("/login-records", response_model=Dict[str, Any])
-async def get_login_records(user_id: Optional[str] = None, limit: int = 10):
-    """
-    查詢登入記錄（僅用於測試）
-    - user_id: 可選，指定用戶ID
-    - limit: 限制返回記錄數量，默認10條
-    """
-    query = {}
-    if user_id:
-        query["user_id"] = user_id
-
-    records = []
-    cursor = login_records_collection.find(query).sort("login_timestamp", -1).limit(limit)
-
-    for record in cursor:
-        # 轉換ObjectId為字符串
-        record["_id"] = str(record["_id"])
-
-        # 簡單格式化時間戳為本地時間字符串
-        if "login_timestamp" in record:
-            record["login_timestamp_local"] = record["login_timestamp"].strftime("%Y-%m-%d %H:%M:%S")
-            record["login_timestamp"] = record["login_timestamp"].isoformat()
-
-        if "created_at" in record:
-            record["created_at_local"] = record["created_at"].strftime("%Y-%m-%d %H:%M:%S")
-            record["created_at"] = record["created_at"].isoformat()
-
-        records.append(record)
-
-    return {
-        "status": "success",
-        "count": len(records),
-        "system_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "records": records
     }
 
 # 獲取排行榜
@@ -1015,7 +871,8 @@ async def login_with_google(google_data: GoogleLoginRequest):
                     "last_login": datetime.now(),
                     "password_hash": None,  # Google用戶沒有密碼
                     "is_active": True,
-                    "carbon_points": 0
+                    "carbon_points": 0,
+                    "phone": None  # 明確設置 phone 為 None
                 }
 
                 # 插入新用戶

@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException, status
-from typing import List, Dict, Any
+from typing import Dict # Removed List, Any
 from datetime import datetime
+from bson import ObjectId # Import ObjectId if task_id is expected to be an ObjectId string
 
-from app.models.user import Task
+# Removed Task import from app.models.user
 from app.database.mongodb import volticar_db
 
 router = APIRouter(prefix="/tasks", tags=["任務"])
@@ -73,12 +74,17 @@ async def complete_task(user_id: str, task_id: str, progress: int):
             detail="用戶不存在"
         )
     
-    # 檢查任務是否存在
-    task = tasks_collection.find_one({"_id": task_id})
+    # 檢查任務是否存在 (假設 task_id 是 ObjectId 字符串)
+    try:
+        task = tasks_collection.find_one({"_id": ObjectId(task_id)})
+    except Exception: # Handle invalid ObjectId format
+        task = None
+
     if not task:
-        task = tasks_collection.find_one({"task_id": task_id})
-        if not task:
-            raise HTTPException(
+        # Optionally, try finding by a 'task_id' field if it exists and is different from _id
+        # task = tasks_collection.find_one({"task_id": task_id})
+        # if not task:
+        raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="任務不存在"
             )
@@ -148,4 +154,4 @@ async def get_all_tasks():
         "msg": "獲取所有任務成功",
         "total": len(formatted_tasks),
         "tasks": formatted_tasks
-    } 
+    }
