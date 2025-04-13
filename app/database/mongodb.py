@@ -120,24 +120,42 @@ def migrate_login_type_field(collection):
                 {"google_id": {"$exists": False}},
                 {"$set": {"google_id": ""}}
             )
-            
-            # 對於一般用戶，設置google_id為user_id
-            collection.update_many(
+
+            # 對於一般用戶，將空的 google_id 設為 None
+            update_result_none = collection.update_many(
                 {"google_id": "", "login_type": "normal"},
-                [{"$set": {"google_id": "$user_id"}}]
+                {"$set": {"google_id": None}} # 將 google_id 設為 None
             )
-            
+            print(f"  ✓ 已將 {update_result_none.modified_count} 個一般用戶的空 google_id 設為 None")
+
             remaining = collection.count_documents({"google_id": {"$exists": False}})
-            print(f"  ✓ 已為 {missing_google_id - remaining} 個文檔添加google_id欄位")
-            
-            # 檢查空字符串的google_id
+            print(f"  ✓ 已為 {missing_google_id - remaining} 個文檔添加 google_id 欄位")
+
+            # 檢查並處理 login_type 為 normal 但 google_id 等於 user_id 的舊數據
+            old_logic_users = collection.count_documents({
+                "login_type": "normal",
+                "$expr": {"$eq": ["$google_id", "$user_id"]}
+            })
+            if old_logic_users > 0:
+                print(f"  發現 {old_logic_users} 個一般用戶的 google_id 等於 user_id (舊邏輯)，開始修正...")
+                fix_result = collection.update_many(
+                    {
+                        "login_type": "normal",
+                        "$expr": {"$eq": ["$google_id", "$user_id"]}
+                    },
+                    {"$set": {"google_id": None}} # 將 google_id 設為 None
+                )
+                print(f"  ✓ 已修正 {fix_result.modified_count} 個一般用戶的 google_id")
+
+            # 檢查仍然是空字符串的 google_id (可能 login_type 不是 normal)
+            # 這些可能是異常數據，暫時也設為 None
             empty_google_id = collection.count_documents({"google_id": ""})
             if empty_google_id > 0:
-                collection.update_many(
-                    {"google_id": ""},
-                    [{"$set": {"google_id": "$user_id"}}]
-                )
-                print(f"  ✓ 已修復 {empty_google_id} 個空的google_id")
+                 fix_empty_result = collection.update_many(
+                     {"google_id": ""},
+                     {"$set": {"google_id": None}}
+                 )
+                 print(f"  ✓ 已將 {fix_empty_result.modified_count} 個剩餘的空 google_id 設為 None")
                 
     except Exception as e:
         print(f"  遷移login_type欄位時出錯: {str(e)}")

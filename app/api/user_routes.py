@@ -74,11 +74,13 @@ async def register_user(user: UserCreate):
         "updated_at": now
     }
 
-    # 如果是一般註冊，將google_id設為user_id作為臨時值
+    # 如果是一般註冊，將 google_id 設為 None
     if user.login_type == "normal":
-        user_dict["google_id"] = user_id  # 使用user_id作為臨時的google_id
+        user_dict["google_id"] = None
+    # 對於其他登入類型 (例如未來可能的 Apple ID 等)，也預設為 None
+    # Google 登入會在 /login/google 處理
     else:
-         user_dict["google_id"] = None
+         user_dict["google_id"] = None # 保持為 None，除非是 Google 登入流程賦值
 
     print(f"Attempting to insert user data: {user_dict}")
 
@@ -128,14 +130,34 @@ async def login_user(request: Request, user_login: UserLogin):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # --- 新增檢查：如果用戶是透過 Google 註冊的，阻止密碼登入 ---
+    if user.get("login_type") == "google":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "GOOGLE_AUTH_REQUIRED",
+                "msg": "此帳號是透過 Google 註冊，請使用 Google 登入"
+            }
+        )
+    # --- 檢查結束 ---
+
+    # 只有非 Google 註冊用戶才進行密碼驗證
     authenticated = authenticate_user(user, user_login.password, password_field="password_hash")
 
     if not authenticated:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="密碼錯誤",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        # 確保密碼錯誤的提示仍然存在
+        if user.get("password_hash") is None: # 處理可能沒有密碼的情況 (雖然理論上 normal 用戶應該有)
+             raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="登入失敗，請檢查您的登入方式",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        else:
+             raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="密碼錯誤",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
     # 嘗試獲取真實客戶端IP地址（考慮代理或轉發）
     client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
@@ -875,6 +897,10 @@ async def login_with_google(google_data: GoogleLoginRequest):
                     "phone": None  # 明確設置 phone 為 None
                 }
 
+                # --- DEBUGGING ---
+                print(f"Attempting to insert new Google user: {new_user}")
+                # --- END DEBUGGING ---
+
                 # 插入新用戶
                 result = users_collection.insert_one(new_user)
 
@@ -904,6 +930,177 @@ async def login_with_google(google_data: GoogleLoginRequest):
         raise
     except Exception as e:
         print(f"Google登入失敗: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Google登入失敗: {str(e)}"
+        )
+
+# --- Helper function to print debug info ---
+def print_google_login_debug(step, data):
+    print(f"[Google Login Debug] Step {step}: {data}")
+
+@router.post("/login/google", summary="使用Google帳號登入")
+async def login_with_google(google_data: GoogleLoginRequest):
+    """
+    使用Google帳號登入，成功返回JWT令牌
+    """
+    print_google_login_debug(1, f"Received data: google_id={google_data.google_id}, email={google_data.email}, name={google_data.name}")
+    try:
+        # 驗證Google ID令牌（簡化版示例，實際應用中應該調用Google API驗證令牌）
+        # TODO: 實現完整的Google令牌驗證
+
+        # 檢查此Google ID是否有效
+        google_id = google_data.google_id
+        existing_user = None
+
+        # 必須確保google_id有效
+        if not google_id or not google_id.strip():
+            print_google_login_debug(2, "Validation failed: Invalid Google ID")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="無效的Google ID"
+            )
+        print_google_login_debug(2, "Validation passed: Google ID is present")
+
+        # 使用google_id查找用戶 (明確指定login_type為google)
+        print_google_login_debug(3, f"Searching for existing user with google_id={google_id} and login_type='google'")
+        existing_user = users_collection.find_one({
+            "google_id": google_id,
+            "login_type": "google"
+        })
+        print_google_login_debug(3, f"Result of google_id search: {'Found' if existing_user else 'Not Found'}")
+
+
+        if existing_user:
+            # 已存在的Google用戶，更新登入時間
+            print_google_login_debug(4, f"Existing Google user found (user_id={existing_user.get('user_id')}). Updating last login.")
+            # ... (update and return token) ...
+        else:
+            # Google ID not found, check email
+            print_google_login_debug(5, "Google ID not found. Checking email.")
+            email = google_data.email
+            if not email:
+                print_google_login_debug(5, "Validation failed: Missing email")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="缺少電子郵件資訊"
+                )
+            print_google_login_debug(5, f"Validation passed: Email is present ({email}). Searching for user with this email.")
+
+            email_user = users_collection.find_one({"email": email})
+            print_google_login_debug(5, f"Result of email search: {'Found' if email_user else 'Not Found'}")
+
+
+            if email_user:
+                # 用戶電子郵件已存在
+                email_user_login_type = email_user.get("login_type")
+                print_google_login_debug(6, f"Email found. Existing user's login_type: {email_user_login_type}")
+                if email_user_login_type == "google":
+                    # 已經是Google用戶，但google_id不匹配，更新google_id
+                    print_google_login_debug(6, "Email user is 'google' type. Updating google_id.")
+                    # ... (update and return token) ...
+                elif email_user_login_type == "normal":
+                    # 是一般註冊用戶，不提供自動綁定功能，避免安全問題
+                    print_google_login_debug(6, "Email user is 'normal' type. Raising conflict error.")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="此郵箱已使用其他登入方式註冊，請使用原登入方式或聯繫客服綁定帳號"
+                    )
+                else:
+                     # Handle unexpected login_type or missing login_type if migration failed
+                     print_google_login_debug(6, f"Email user has unexpected login_type: {email_user_login_type}. Raising error.")
+                     raise HTTPException(
+                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                         detail="用戶帳號狀態異常，請聯繫客服"
+                     )
+
+                # 創建訪問令牌 (This part seems misplaced, should be inside the specific conditions above)
+                # access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+                # access_token = create_access_token(
+                #     data={"sub": email_user["user_id"]},
+                #     expires_delta=access_token_expires
+                # )
+                #
+                # return {
+                #     "status": "success",
+                #     "msg": "Google登入成功",
+                #     "user_id": email_user["user_id"],
+                #     "access_token": access_token,
+                #     "token_type": "bearer"
+                # }
+            else:
+                # 完全新用戶，創建新帳號
+                print_google_login_debug(7, "Email not found. Proceeding to create a new user.")
+                user_id = str(uuid.uuid4())
+                username = google_data.name or f"user_{uuid.uuid4().hex[:8]}"
+                print_google_login_debug(7, f"Generated user_id: {user_id}, username: {username}")
+
+
+                # 確保用戶名不重複
+                if users_collection.find_one({"username": username}):
+                    print_google_login_debug(7, f"Username '{username}' already exists. Generating a new one.")
+                    username = f"user_{uuid.uuid4().hex[:8]}"
+                    print_google_login_debug(7, f"New username: {username}")
+
+
+                new_user = {
+                    "user_id": user_id,
+                    "email": email,
+                    "username": username,
+                    "google_id": google_id,
+                    "login_type": "google",  # 明確設置為Google登入
+                    "created_at": datetime.now(),
+                    "updated_at": datetime.now(),
+                    "last_login": datetime.now(),
+                    "password_hash": None,  # Google用戶沒有密碼
+                    "is_active": True,
+                    "carbon_points": 0,
+                    "phone": None  # 明確設置 phone 為 None
+                }
+
+                # --- DEBUGGING ---
+                print(f"Attempting to insert new Google user: {new_user}") # Keep this original print
+                print_google_login_debug(8, f"Final user object before insert: {new_user}")
+                # --- END DEBUGGING ---
+
+                # 插入新用戶
+                result = users_collection.insert_one(new_user)
+                print_google_login_debug(9, f"Insertion result: inserted_id={result.inserted_id}")
+
+
+                if not result.inserted_id:
+                    print_google_login_debug(9, "Insertion failed!")
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="創建用戶失敗"
+                    )
+                print_google_login_debug(9, "Insertion successful.")
+
+
+                # 創建訪問令牌
+                access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+                access_token = create_access_token(
+                    data={"sub": user_id},
+                    expires_delta=access_token_expires
+                )
+                print_google_login_debug(10, "Access token created.")
+
+
+                return {
+                    "status": "success",
+                    "msg": "Google登入成功，已創建新帳號",
+                    "user_id": user_id,
+                    "access_token": access_token,
+                    "token_type": "bearer"
+                }
+
+    except HTTPException as http_exc:
+        # 重新拋出HTTP異常
+        print_google_login_debug("Error", f"HTTPException: status_code={http_exc.status_code}, detail={http_exc.detail}")
+        raise
+    except Exception as e:
+        print(f"Google登入失敗: {str(e)}")
+        print_google_login_debug("Error", f"Unhandled Exception: {type(e).__name__} - {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Google登入失敗: {str(e)}"
