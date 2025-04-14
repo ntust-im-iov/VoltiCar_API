@@ -73,6 +73,17 @@ class UserLogin(BaseModel):
     phone: Optional[str] = None
     password: str
 
+# --- 新增：Email 驗證請求模型 ---
+class EmailVerificationRequest(BaseModel):
+    email: EmailStr
+
+# --- 新增：完成註冊請求模型 ---
+class CompleteRegistrationRequest(BaseModel):
+    email: EmailStr
+    username: str
+    password: str
+    phone: Optional[str] = None
+
 # 綁定請求模型 - Used by user_routes.py/request_bind
 class BindRequest(BaseModel):
     type: str
