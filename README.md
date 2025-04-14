@@ -4,7 +4,7 @@
 
 ## 功能
 
-- **用戶管理**：註冊、登錄、認證
+- **用戶管理**：註冊、登錄、認證、郵件驗證
 - **充電站管理**：查詢、創建充電站
 - **車輛管理**：車輛註冊、電池狀態更新、車輛信息查詢
 - **充電記錄**：記錄用戶充電活動並計算碳積分
@@ -19,8 +19,10 @@
 - **MongoDB**：NoSQL數據庫存儲用戶和充電站信息
 - **JWT認證**：安全的基於令牌的認證系統
 - **Pydantic**：數據驗證和設置管理
-- **Docker**：容器化部署支持
-- **Firebase Admin SDK**：推播通知服務
+- **Docker / Docker Compose**：容器化部署與編排
+- **Nginx**：作為反向代理，處理 HTTPS、負載均衡及日誌記錄 (例如獲取真實客戶端 IP)
+- **Email Service**：用於發送驗證郵件等通知
+- **Firebase Admin SDK**：推播通知服務 (開發中)
 
 ## 項目結構
 
@@ -43,7 +45,8 @@ volticar_api/
 │   │   └── station.py      # 充電站模型
 │   │
 │   ├── services/           # 外部服務
-│   │   └── firebase_service.py # Firebase推播服務
+│   │   └── email_service.py # 郵件服務
+│   │   # └── firebase_service.py # Firebase推播服務 (開發中)
 │   │
 │   └── utils/              # 工具函數
 │       ├── auth.py         # 認證工具
@@ -88,6 +91,7 @@ docker-compose up -d
 ```
 
 這將構建API鏡像並啟動API容器。API將連接到外部MongoDB數據庫。
+**注意**：在生產環境或需要記錄真實 IP 的場景下，通常會在 FastAPI 應用前部署 Nginx 作為反向代理。`docker-compose.production.yml` 或相關部署腳本可能已包含 Nginx 配置。Nginx 負責接收外部請求，並將其轉發給 Uvicorn/FastAPI 服務，同時可以處理 HTTPS 加密並正確設置 `X-Forwarded-For` 或 `X-Real-IP` 頭部，以便 FastAPI 獲取真實的客戶端 IP 地址。
 
 2. 查看運行中的容器：
 
@@ -128,16 +132,25 @@ restart.bat
 - `API_ENV`: 環境類型（開發或生產）
 - `FIREBASE_CREDENTIALS_PATH`: Firebase服務帳號金鑰文件路徑（用於FCM推播）
 - `PYTHONIOENCODING`: Python I/O編碼設置（建議使用utf-8）
+- `MAIL_USERNAME`: 郵件伺服器用戶名
+- `MAIL_PASSWORD`: 郵件伺服器密碼
+- `MAIL_FROM`: 發件人郵箱地址
+- `MAIL_PORT`: 郵件伺服器端口 (e.g., 587 for TLS)
+- `MAIL_SERVER`: 郵件伺服器地址 (e.g., smtp.gmail.com)
+- `MAIL_STARTTLS`: 是否啟用 STARTTLS (True/False)
+- `MAIL_SSL_TLS`: 是否啟用 SSL/TLS (True/False)
 
 ## API端點
 
 ### 用戶API
 
-- `POST /users/register`：創建新用戶
-- `POST /users/login`：用戶登錄獲取令牌
-- `GET /users/profile`：獲取當前用戶信息
-- `POST /users/send-otp`：發送OTP驗證碼
-- `POST /users/verify-otp`：驗證OTP代碼
+- `POST /users/register`：創建新用戶 (可能觸發郵件驗證)
+- `POST /token`：用戶登錄獲取 Access Token 和 Refresh Token (`/users/login` 可能已更改或棄用)
+- `POST /token/refresh`：使用 Refresh Token 刷新 Access Token
+- `GET /users/me`：獲取當前用戶信息 (`/users/profile` 可能已更改或棄用)
+# - `POST /users/send-otp`：發送OTP驗證碼 (可能已整合至註冊流程或改用郵件驗證)
+# - `POST /users/verify-otp`：驗證OTP代碼 (可能已整合至註冊流程或改用郵件驗證)
+- `GET /users/verify-email/{token}`：驗證用戶郵箱地址 (示例路徑)
 - `POST /users/update-fcm-token`：更新FCM令牌（用於推播通知）
 - `GET /users/leaderboard`：獲取用戶積分排行榜
 - `POST /users/friends`：管理好友關係（添加/刪除）
@@ -333,4 +346,4 @@ POST /vehicles/car456/battery?battery_level=80&battery_health=95&lastcharge_mile
 1. API文檔可在運行後訪問：`http://localhost:22000/docs`
 2. MongoDB索引已被自動處理，使用`sparse=True`避免null值重複問題
 3. 使用Windows環境中的`restart.bat`可一鍵重啟整個服務
-4. 使用`start_api.bat`可直接啟動Python服務，不依賴Docker環境 
+4. 使用`start_api.bat`可直接啟動Python服務，不依賴Docker環境
