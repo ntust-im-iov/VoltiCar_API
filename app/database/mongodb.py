@@ -176,6 +176,7 @@ if client is not None:
         tasks_collection = volticar_db["Tasks"]
         achievements_collection = volticar_db["Achievements"]
         rewards_collection = volticar_db["Rewards"]
+        pending_verifications_collection = volticar_db["PendingVerifications"] # 新增：待驗證集合
         
         # 遷移login_type欄位
         print("開始遷移login_type欄位...")
@@ -223,22 +224,36 @@ if client is not None:
         # 獎勵索引
         print("獎勵索引:")
         safely_create_index(rewards_collection, "item_id", unique=True)
+
+        # 待驗證集合索引
+        print("待驗證集合索引:")
+        safely_create_index(pending_verifications_collection, "email") # 方便查詢 Email
+        safely_create_index(pending_verifications_collection, "token", unique=True) # Token 必須唯一
+        # 可以考慮為 expires_at 創建 TTL 索引，自動刪除過期未驗證的記錄
+        # pending_verifications_collection.create_index("expires_at", expireAfterSeconds=0)
+        # print("  創建 TTL 索引: expires_at")
         
         print("MongoDB索引檢查完成!")
-    
+
     except Exception as e:
-        print(f"設置數據庫及集合時發生錯誤: {e}")
+        print(f"設置數據庫、集合或執行索引/遷移時發生錯誤: {e}")
+        # 僅記錄錯誤，不再將集合設為 None，讓應用程式嘗試繼續運行
         # 如果出現錯誤，創建空對象以免引發屬性錯誤
-        volticar_db = None
-        charge_station_db = None
-        users_collection = None
-        login_records_collection = None
-        # otp_records_collection = None # Removed
-        # stations_collection = None # Removed
-        vehicles_collection = None
-        tasks_collection = None
-        achievements_collection = None
-        rewards_collection = None
+        # volticar_db = None # 不再設為 None
+        # charge_station_db = None # 不再設為 None
+        # users_collection = None # 不再設為 None
+        # login_records_collection = None # 不再設為 None
+        # vehicles_collection = None # 不再設為 None
+        # tasks_collection = None # 不再設為 None
+        # achievements_collection = None # 不再設為 None
+        # rewards_collection = None # 不再設為 None
+        # pending_verifications_collection = None # 不再設為 None
+        # 注意：如果獲取 volticar_db 或 charge_station_db 本身失敗，
+        # 後續的集合賦值會自然失敗，但這裡假設主要錯誤發生在索引/遷移階段。
+        # 如果需要更細緻的處理，可以將集合賦值移到 try 區塊的更前面。
+        # 確保 tasks_collection 等變數在 try 區塊外有預設值 (雖然下方 else 區塊已處理)
+        pass # 僅記錄錯誤，繼續執行
+
 else:
     # 連接失敗時，創建空對象以免引發屬性錯誤
     volticar_db = None
@@ -251,8 +266,23 @@ else:
     tasks_collection = None
     achievements_collection = None
     rewards_collection = None
-    
+    pending_verifications_collection = None # 新增
+
     print("警告: 無法連接到MongoDB，API將在無數據庫模式下運行")
+
+# 確保即使在 try-except 中出錯，這些變數也有定義 (雖然理論上應該在 try 中賦值)
+# 但為了防止 UnboundLocalError，如果它們在 try 中賦值失敗且 except 中未處理，
+# 在這裡給它們一個預設值 None (雖然這與上面的修改目標有些矛盾，但更安全)
+# 更好的做法是確保 try 區塊能處理集合賦值本身的錯誤
+if 'volticar_db' not in locals(): volticar_db = None
+if 'charge_station_db' not in locals(): charge_station_db = None
+if 'users_collection' not in locals(): users_collection = None
+if 'login_records_collection' not in locals(): login_records_collection = None
+if 'vehicles_collection' not in locals(): vehicles_collection = None
+if 'tasks_collection' not in locals(): tasks_collection = None
+if 'achievements_collection' not in locals(): achievements_collection = None
+if 'rewards_collection' not in locals(): rewards_collection = None
+if 'pending_verifications_collection' not in locals(): pending_verifications_collection = None
 
 # 打印連接信息以便調試
 if volticar_db is not None:

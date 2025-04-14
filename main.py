@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles # Added import
+from fastapi.responses import FileResponse, JSONResponse # Added FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 import uvicorn
 import os
 import sys
@@ -48,10 +49,10 @@ file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
 # --- 配置 Uvicorn 日誌 ---
-# 讓 Uvicorn 的 access logger 也使用我們設定的 handlers
-uvicorn_access_logger = logging.getLogger("uvicorn.access")
-uvicorn_access_logger.handlers = logger.handlers # 使用與 root logger 相同的 handlers
-uvicorn_access_logger.propagate = False # 防止日誌重複輸出到 root logger
+# 註解掉以下程式碼，讓 Uvicorn 使用預設的 access logger 設定
+# uvicorn_access_logger = logging.getLogger("uvicorn.access")
+# uvicorn_access_logger.handlers = logger.handlers # 使用與 root logger 相同的 handlers
+# uvicorn_access_logger.propagate = False # 防止日誌重複輸出到 root logger
 
 # --- Uvicorn 日誌配置結束 ---
 
@@ -120,6 +121,22 @@ try:
 except Exception as e:
     print(f"載入API路由時出錯: {str(e)}")
     traceback.print_exc()
+
+
+# --- Frontend Static Files Setup Removed ---
+# Frontend serving logic has been removed as it's not needed for this API-only setup.
+
+# Restore original root route
+@app.get("/")
+async def root():
+    return {
+        "message": "歡迎使用電動汽車充電站API",
+        "version": "1.0.0",
+        "docs_url": "/docs"
+    }
+
+# --- Catch-all route removed ---
+
 
 # 應用程式啟動事件處理
 @app.on_event("startup")
