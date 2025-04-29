@@ -1,28 +1,48 @@
-# 電動汽車充電站 API
+# Volticar API - 電動汽車智慧充電與社群平台
 
-基於FastAPI的電動汽車充電站管理、用戶充電記錄系統，包含社交互動和獎勵機制。
+基於 FastAPI 的電動汽車充電站管理、用戶充電記錄、社群互動及獎勵系統 API。
 
-## 功能
+## 主要功能
 
-- **用戶管理**：註冊、登錄、認證、郵件驗證
-- **充電站管理**：查詢、創建充電站
-- **車輛管理**：車輛註冊、電池狀態更新、車輛信息查詢
-- **充電記錄**：記錄用戶充電活動並計算碳積分
-- **社交系統**：好友添加/移除、排行榜競賽
-- **任務與成就**：每日任務、成就解鎖、積分獎勵
-- **虛擬物品**：積分兌換、物品庫管理
-- **推播通知**：使用Firebase Cloud Messaging (FCM)向用戶發送推播通知
+- **用戶管理**：
+    - **Email 驗證註冊流程**:
+        1. `POST /users/request-verification`: 請求發送驗證 Email。
+        2. `GET /users/verify-email`: 透過 Email 中的連結驗證地址 (返回 HTML)。
+        3. `POST /users/complete-registration`: 提供用戶名、密碼完成註冊。
+    - **登入**:
+        - `POST /users/login`: 使用 Email/用戶名和密碼登入。
+        - `POST /users/login/google`: 使用 Google 帳號登入/註冊。
+    - **密碼重設 (OTP)**:
+        1. `POST /users/forgot-password`: 請求發送密碼重設 OTP 到 Email。
+        2. `POST /users/verify-reset-otp`: 驗證收到的 OTP。
+        3. `POST /users/reset-password`: 使用驗證後取得的短期權杖設定新密碼。
+    - **個人資料**: `GET /users/profile` 獲取用戶資訊。
+    - **FCM Token**: `POST /users/update-fcm-token` 更新用於推播通知的 Firebase Cloud Messaging Token。
+- **充電站管理**：查詢、創建充電站 (`/stations`相關路由)。
+- **車輛管理**：車輛註冊、電池狀態更新、車輛信息查詢 (`/vehicles`相關路由)。
+- **充電記錄**：記錄用戶充電活動並計算碳積分 (相關邏輯整合在其他服務中)。
+- **社群系統**：
+    - `POST /users/friends`: 添加/移除好友。
+    - `GET /users/leaderboard`: 查看積分排行榜。
+- **任務與成就**：
+    - `GET /users/tasks`: 獲取用戶任務列表。
+    - `GET /users/achievements`: 獲取用戶成就列表。
+    - `POST /tasks/complete`: 更新任務進度。
+- **獎勵系統**：
+    - `POST /users/redeem-reward`: 使用積分兌換獎勵。
+    - `GET /users/inventory`: 查看用戶物品庫。
+- **推播通知**：使用 Firebase Cloud Messaging (FCM) 向用戶發送推播通知 (部分功能開發中)。
 
 ## 技術棧
 
-- **FastAPI**：現代、高性能的Python Web框架
-- **MongoDB**：NoSQL數據庫存儲用戶和充電站信息
-- **JWT認證**：安全的基於令牌的認證系統
-- **Pydantic**：數據驗證和設置管理
-- **Docker / Docker Compose**：容器化部署與編排
-- **Nginx**：作為反向代理，處理 HTTPS、負載均衡及日誌記錄 (例如獲取真實客戶端 IP)
-- **Email Service**：用於發送驗證郵件等通知
-- **Firebase Admin SDK**：推播通知服務 (開發中)
+- **FastAPI**: 現代、高性能的 Python Web 框架。
+- **MongoDB**: NoSQL 數據庫，使用 `motor` 異步驅動。
+- **Pydantic**: 數據驗證和模型定義。
+- **JWT**: 用於安全的 API 認證。
+- **Docker / Docker Compose**: 容器化部署與管理。
+- **Email Service**: 使用 `aiohttp` (隱含於 FastAPI 背景任務或直接調用) 發送異步郵件。
+- **Firebase Admin SDK**: 用於 FCM 推播通知 (開發中)。
+- **Uvicorn**: ASGI 伺服器。
 
 ## 項目結構
 
@@ -30,320 +50,156 @@
 volticar_api/
 │
 ├── app/                    # 應用主目錄
-│   ├── api/                # API路由
-│   │   ├── __init__.py     # API路由初始化
-│   │   ├── user_routes.py  # 用戶相關路由
-│   │   ├── vehicle_routes.py # 車輛相關路由
-│   │   ├── station_routes.py # 充電站相關路由
-│   │   └── task_routes.py  # 任務相關路由
+│   ├── api/                # API路由模塊
+│   │   ├── __init__.py
+│   │   ├── user_routes.py  # 用戶、認證、社群、任務、獎勵等
+│   │   ├── vehicle_routes.py # 車輛管理
+│   │   ├── station_routes.py # 充電站管理
+│   │   ├── task_routes.py  # 任務定義 (可能與 user_routes 整合)
+│   │   └── token_routes.py # JWT Token 相關 (可能與 user_routes 整合)
+│   │   └── achievement_routes.py # 成就定義 (可能與 user_routes 整合)
 │   │
 │   ├── database/           # 數據庫連接
-│   │   └── mongodb.py      # MongoDB連接配置
+│   │   └── mongodb.py      # MongoDB 初始化與集合定義
 │   │
-│   ├── models/             # 數據模型
-│   │   ├── user.py         # 用戶和功能模型
+│   ├── models/             # Pydantic 數據模型
+│   │   ├── user.py         # 用戶相關模型 (包含註冊、登入、OTP、FCM等)
 │   │   └── station.py      # 充電站模型
 │   │
-│   ├── services/           # 外部服務
-│   │   └── email_service.py # 郵件服務
-│   │   # └── firebase_service.py # Firebase推播服務 (開發中)
+│   ├── services/           # 外部服務客戶端
+│   │   └── email_service.py # 異步郵件發送服務
+│   │   # └── firebase_service.py # Firebase 推播服務 (待完善)
 │   │
 │   └── utils/              # 工具函數
-│       ├── auth.py         # 認證工具
-│       └── helpers.py      # 輔助函數
+│       ├── auth.py         # 認證 (密碼哈希, JWT, 用戶依賴)
+│       └── helpers.py      # 其他輔助函數
 │
-├── Dockerfile              # Docker構建文件
-├── docker-compose.yml      # Docker Compose配置
-├── docker-compose.production.yml # 生產環境配置
-├── .env                    # 環境變量配置
-├── main.py                 # 應用入口
-├── restart.bat             # Windows重啟腳本
-├── start_api.bat           # Windows啟動腳本
-└── requirements.txt        # 項目依賴
+├── logs/                   # 日誌文件目錄 (由 logging 配置產生)
+├── .dockerignore           # Docker 忽略文件
+├── .gitignore              # Git 忽略文件
+├── Dockerfile              # 應用 Docker 鏡像構建文件
+├── docker-compose.yml      # 開發環境 Docker Compose 配置
+├── docker-compose.production.yml # 生產環境 Docker Compose 配置
+├── .env                    # 環境變量文件 (本地開發用)
+├── env.example             # 環境變量範例
+├── main.py                 # FastAPI 應用入口點
+├── README.md               # 項目說明文件
+└── requirements.txt        # Python 依賴列表
 ```
+*(注意: `restart.bat` 和 `start_api.bat` 已從結構圖中移除，因為它們是特定於開發環境的輔助腳本)*
 
 ## 安裝與運行
 
-### 本地運行
+### 環境準備
+
+- Python 3.8+
+- MongoDB 數據庫 (本地或遠程)
+- Docker & Docker Compose (推薦)
+
+### 本地開發
+
+1.  **克隆倉庫**:
+    ```bash
+    git clone <repository_url>
+    cd volticar_api
+    ```
+2.  **創建虛擬環境** (推薦):
+    ```bash
+    python -m venv venv
+    source venv/bin/activate  # Linux/macOS
+    # venv\Scripts\activate  # Windows
+    ```
+3.  **安裝依賴**:
+    ```bash
+    pip install -r requirements.txt
+    ```
+4.  **配置環境變量**:
+    複製 `env.example` 為 `.env` 並填寫必要的配置 (數據庫連接、郵件服務器、JWT 密鑰等)。
+5.  **運行應用**:
+    ```bash
+    uvicorn main:app --host 0.0.0.0 --port 22000 --reload
+    ```
+    *   `--reload` 會在代碼變更時自動重啟服務，適合開發。
+
+### 使用 Docker 部署
+
+1.  **配置環境變量**:
+    確保 `docker-compose.yml` 或 `docker-compose.production.yml` 中定義了必要的環境變量，或者使用 `.env` 文件 (Docker Compose 會自動加載)。
+2.  **構建並啟動服務**:
+    *   開發環境:
+        ```bash
+        docker-compose up --build -d
+        ```
+    *   生產環境 (通常包含反向代理如 Nginx):
+        ```bash
+        docker-compose -f docker-compose.production.yml up --build -d
+        ```
+3.  **查看日誌**:
+    ```bash
+    docker-compose logs -f <service_name>  # 例如: docker-compose logs -f volticar-api
+    ```
+4.  **停止服務**:
+    ```bash
+    docker-compose down
+    ```
+    或 (生產環境):
+    ```bash
+    docker-compose -f docker-compose.production.yml down
+    ```
+
+## 環境變量 (`.env`)
+
+- `DATABASE_URL`: MongoDB 連接 URL (包含認證信息)。
+- `VOLTICAR_DB`: Volticar 主數據庫名稱。
+- `SECRET_KEY`: 用於 JWT 簽名的密鑰 (請使用強隨機字符串)。
+- `ALGORITHM`: JWT 簽名算法 (預設: HS256)。
+- `ACCESS_TOKEN_EXPIRE_MINUTES`: Access Token 有效期 (分鐘)。
+- `API_BASE_URL`: API 的基礎 URL，用於生成郵件中的驗證連結 (例如: `https://yourdomain.com` 或 `http://localhost:22000`)。
+- `MAIL_USERNAME`: SMTP 伺服器用戶名。
+- `MAIL_PASSWORD`: SMTP 伺服器密碼。
+- `MAIL_FROM`: 發件人 Email 地址。
+- `MAIL_PORT`: SMTP 伺服器端口 (例如: 465 for SSL, 587 for TLS)。
+- `MAIL_SERVER`: SMTP 伺服器地址。
+- `MAIL_STARTTLS`: 是否啟用 STARTTLS (True/False)。
+- `MAIL_SSL_TLS`: 是否啟用 SSL/TLS (True/False)。
+- `FIREBASE_CREDENTIALS_PATH`: (可選) Firebase Admin SDK 服務帳號金鑰 JSON 文件路徑。
+
+## API 端點概覽
+
+API 使用 FastAPI 自動生成交互式文檔。服務運行後，訪問 `/docs` (Swagger UI) 或 `/redoc` (ReDoc)。
+
+**重要提示**: 許多端點現在使用 `application/x-www-form-urlencoded` 格式接收參數 (使用 `Form(...)`)，而不是 JSON。請參考 `/docs` 中的具體端點定義。
+
+### 主要用戶流程
+
+- **註冊**: `POST /users/request-verification` -> (Email) -> `GET /users/verify-email` -> `POST /users/complete-registration`
+- **登入**: `POST /users/login` 或 `POST /users/login/google`
+- **密碼重設**: `POST /users/forgot-password` -> (Email OTP) -> `POST /users/verify-reset-otp` -> `POST /users/reset-password`
+
+### 其他端點 (部分列表)
+
+- `GET /users/profile`: 獲取用戶資料
+- `POST /users/update-fcm-token`: 更新 FCM Token
+- `POST /users/friends`: 添加/刪除好友
+- `GET /users/leaderboard`: 排行榜
+- `GET /users/tasks`: 任務列表
+- `GET /users/achievements`: 成就列表
+- `POST /users/redeem-reward`: 兌換獎勵
+- `GET /users/inventory`: 物品庫
+- `GET /vehicles/user/{user_id}`: 獲取用戶車輛
+- `POST /vehicles`: 註冊車輛
+- `POST /vehicles/{vehicle_id}/battery`: 更新電池狀態
+- `GET /stations`: 獲取充電站
+- `POST /stations`: 創建充電站
+- `GET /health`: 健康檢查
 
-1. 安裝依賴：
+## Firebase 推播服務 (開發中)
 
-```bash
-pip install -r requirements.txt
-```
+系統計劃整合 Firebase Cloud Messaging (FCM) 以實現推播通知功能，例如 OTP、系統通知、活動提醒等。相關 API (`/users/update-fcm-token`) 和服務模塊 (`app/services/firebase_service.py`) 已初步建立，但完整功能待後續開發和 Firebase 項目配置。
 
-2. 運行應用：
+## 注意事項
 
-```bash
-# 使用啟動腳本(Windows)
-start_api.bat
-
-# 或直接使用Python
-python main.py
-```
-
-### 使用Docker部署
-
-1. 通過Docker Compose啟動應用：
-
-```bash
-docker-compose up -d
-```
-
-這將構建API鏡像並啟動API容器。API將連接到外部MongoDB數據庫。
-**注意**：在生產環境或需要記錄真實 IP 的場景下，通常會在 FastAPI 應用前部署 Nginx 作為反向代理。`docker-compose.production.yml` 或相關部署腳本可能已包含 Nginx 配置。Nginx 負責接收外部請求，並將其轉發給 Uvicorn/FastAPI 服務，同時可以處理 HTTPS 加密並正確設置 `X-Forwarded-For` 或 `X-Real-IP` 頭部，以便 FastAPI 獲取真實的客戶端 IP 地址。
-
-2. 查看運行中的容器：
-
-```bash
-docker-compose ps
-```
-
-3. 停止服務：
-
-```bash
-docker-compose down
-```
-
-### 生產環境部署
-
-使用生產環境配置文件啟動：
-
-```bash
-docker-compose -f docker-compose.production.yml up -d
-```
-
-或使用Windows環境的啟動腳本：
-
-```bash
-restart.bat
-```
-
-## 環境變量
-
-在`.env`文件或Docker環境變量中配置：
-
-- `DATABASE_URL`: MongoDB連接URL
-- `VOLTICAR_DB`: Volticar數據庫名
-- `CHARGE_STATION_DB`: 充電站數據庫名
-- `SECRET_KEY`: JWT認證密鑰
-- `API_HOST`: API主機地址
-- `API_PORT`: API端口
-- `API_ENV`: 環境類型（開發或生產）
-- `FIREBASE_CREDENTIALS_PATH`: Firebase服務帳號金鑰文件路徑（用於FCM推播）
-- `PYTHONIOENCODING`: Python I/O編碼設置（建議使用utf-8）
-- `MAIL_USERNAME`: 郵件伺服器用戶名
-- `MAIL_PASSWORD`: 郵件伺服器密碼
-- `MAIL_FROM`: 發件人郵箱地址
-- `MAIL_PORT`: 郵件伺服器端口 (e.g., 587 for TLS)
-- `MAIL_SERVER`: 郵件伺服器地址 (e.g., smtp.gmail.com)
-- `MAIL_STARTTLS`: 是否啟用 STARTTLS (True/False)
-- `MAIL_SSL_TLS`: 是否啟用 SSL/TLS (True/False)
-
-## API端點
-
-### 用戶API
-
-- `POST /users/register`：創建新用戶 (可能觸發郵件驗證)
-- `POST /token`：用戶登錄獲取 Access Token 和 Refresh Token (`/users/login` 可能已更改或棄用)
-- `POST /token/refresh`：使用 Refresh Token 刷新 Access Token
-- `GET /users/me`：獲取當前用戶信息 (`/users/profile` 可能已更改或棄用)
-# - `POST /users/send-otp`：發送OTP驗證碼 (可能已整合至註冊流程或改用郵件驗證)
-# - `POST /users/verify-otp`：驗證OTP代碼 (可能已整合至註冊流程或改用郵件驗證)
-- `GET /users/verify-email/{token}`：驗證用戶郵箱地址 (示例路徑)
-- `POST /users/update-fcm-token`：更新FCM令牌（用於推播通知）
-- `GET /users/leaderboard`：獲取用戶積分排行榜
-- `POST /users/friends`：管理好友關係（添加/刪除）
-- `GET /users/tasks`：獲取用戶任務列表
-- `GET /users/achievements`：獲取用戶成就列表
-- `POST /users/redeem-reward`：兌換積分獎勵
-- `GET /users/inventory`：獲取用戶物品庫
-- `GET /users/charging-stations`：獲取附近充電站
-
-### 車輛API
-
-- `GET /vehicles/{user_id}/{vehicle_id}`：獲取指定車輛信息
-- `POST /vehicles`：註冊新車輛
-- `POST /vehicles/{vehicle_id}/battery`：更新車輛電池信息
-- `PUT /vehicles/{vehicle_id}`：更新車輛基本信息
-- `GET /vehicles/user/{user_id}`：獲取用戶的所有車輛
-
-### 任務API
-
-- `GET /tasks/daily`：獲取每日任務
-- `POST /tasks/complete`：完成任務更新進度
-- `GET /tasks`：獲取所有任務
-
-### 充電站API
-
-- `GET /stations`：獲取所有充電站
-- `GET /stations/{station_id}`：獲取指定充電站
-- `GET /stations/city/{city}`：獲取指定城市的充電站（支持中文城市名）
-- `POST /stations`：創建新充電站
-
-### 健康檢查
-
-- `GET /health`: 檢查API服務狀態
-
-## 社交互動功能
-
-### 好友系統
-
-好友系統允許用戶添加或移除好友關係，實現社交互動：
-
-1. 添加好友：
-   ```
-   POST /users/friends
-   {
-     "user_id": "user123",
-     "friend_id": "friend456",
-     "action": "add"
-   }
-   ```
-
-2. 移除好友：
-   ```
-   POST /users/friends
-   {
-     "user_id": "user123",
-     "friend_id": "friend456",
-     "action": "remove"
-   }
-   ```
-
-### 排行榜競賽
-
-用戶可以在不同時間範圍內查看碳積分排行榜，鼓勵環保行為：
-
-```
-GET /users/leaderboard?time_range=week
-```
-
-支持的時間範圍：`day`、`week`、`month`
-
-## 任務與獎勵系統
-
-### 每日任務
-
-系統提供每日任務，用戶完成任務可獲得碳積分：
-
-```
-GET /tasks/daily?user_id=user123
-```
-
-### 獎勵兌換
-
-用戶可以使用碳積分兌換虛擬物品：
-
-```
-POST /users/redeem-reward
-{
-  "user_id": "user123",
-  "points": 100,
-  "reward_id": "reward789"
-}
-```
-
-### 物品庫
-
-用戶可以查看已兌換的所有物品：
-
-```
-GET /users/inventory?user_id=user123
-```
-
-## 車輛管理功能
-
-### 車輛註冊
-
-用戶可以註冊多輛電動車：
-
-```
-POST /vehicles
-{
-  "user_id": "user123",
-  "vehicle_id": "car456",
-  "vehicle_name": "特斯拉Model 3"
-}
-```
-
-### 電池狀態更新
-
-定期更新車輛的電池狀態和里程：
-
-```
-POST /vehicles/car456/battery?battery_level=80&battery_health=95&lastcharge_mileage=150
-```
-
-## Firebase推播服務
-
-> **重要提示：** FCM功能目前處於開發階段，尚未完全啟用。系統已完成相關模型和API接口設計，但尚未連接到實際的Firebase服務。推播功能將在後續版本中實現。
-
-本系統整合了Firebase Cloud Messaging (FCM)用於向用戶發送推播通知，主要用於：
-
-1. 發送OTP驗證碼
-2. 系統通知
-3. 活動與優惠提醒
-4. 任務完成提醒
-5. 好友互動通知
-
-### 設置Firebase
-
-1. 在Firebase控制台創建一個新項目
-2. 生成服務帳號金鑰（JSON格式）
-3. 將金鑰設置為環境變量或文件：
-   ```
-   FIREBASE_CREDENTIALS={"type":"service_account",...}
-   ```
-   或
-   ```
-   FIREBASE_CREDENTIALS_PATH=/path/to/firebase-credentials.json
-   ```
-4. 在生產環境中設置`API_ENV=production`以啟用FCM功能
-
-### 使用FCM推播
-
-1. 客戶端獲取FCM令牌並通過API更新：
-   ```
-   POST /users/update-fcm-token
-   {
-     "user_id": "user123",
-     "fcm_token": "firebase-token",
-     "device_info": "iPhone 13, iOS 15.4"
-   }
-   ```
-
-2. 伺服器可以通過`firebase_service.py`中的函數發送推播
-
-## 連接問題處理
-
-### MongoDB連接問題
-
-如果遇到MongoDB連接問題，尤其是SSL相關錯誤：
-
-1. 檢查連接字符串中的SSL設置：
-   ```
-   DATABASE_URL=mongodb://username:password@hostname:port/?authSource=admin&ssl=false
-   ```
-
-2. 確保環境變量設置正確：
-   ```
-   PYTHONIOENCODING=utf-8
-   ```
-
-3. 使用`start_api.bat`直接啟動Python服務，避免Docker環境的額外複雜性
-
-### 編碼問題
-
-對於中文字符支持問題：
-
-1. 確保所有Python腳本使用UTF-8編碼
-2. 在Windows環境中，命令提示符添加：`chcp 65001`設置UTF-8編碼
-3. 在Docker環境中設置環境變量：`PYTHONIOENCODING=utf-8`
-
-## 開發注意事項
-
-1. API文檔可在運行後訪問：`http://localhost:22000/docs`
-2. MongoDB索引已被自動處理，使用`sparse=True`避免null值重複問題
-3. 使用Windows環境中的`restart.bat`可一鍵重啟整個服務
-4. 使用`start_api.bat`可直接啟動Python服務，不依賴Docker環境
+- **安全性**: 確保 `SECRET_KEY` 的安全，不要硬編碼敏感信息。生產環境建議使用更安全的配置管理方式。
+- **錯誤處理**: API 包含詳細的錯誤處理和 HTTP 狀態碼，客戶端應妥善處理。
+- **異步處理**: 大量使用了 Python 的 `async/await` 語法，確保 I/O 操作 (如數據庫查詢、郵件發送) 不會阻塞事件循環。
+- **數據庫索引**: `app/database/mongodb.py` 中會自動創建必要的索引以優化查詢性能。
