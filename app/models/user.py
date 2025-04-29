@@ -70,7 +70,7 @@ class UserCreate(BaseModel):
 class UserLogin(BaseModel):
     username: Optional[str] = None
     email: Optional[EmailStr] = None
-    phone: Optional[str] = None
+    # phone: Optional[str] = None # 移除 phone 欄位，登入只用 username 或 email
     password: str
 
 # --- 新增：Email 驗證請求模型 ---

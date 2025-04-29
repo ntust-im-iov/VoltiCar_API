@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Form # Added Form
 from typing import Dict, Any # Added Any back
 from datetime import datetime
 from bson import ObjectId # Import ObjectId if task_id is expected to be an ObjectId string
@@ -59,13 +59,19 @@ async def get_daily_tasks(user_id: str):
 
 # 完成任務
 @router.post("/complete", response_model=Dict[str, Any])
-async def complete_task(user_id: str, task_id: str, progress: int):
+async def complete_task(
+    user_id: str = Form(..., description="用戶ID"),
+    task_id: str = Form(..., description="任務ID (ObjectId 字串)"),
+    progress: int = Form(..., description="當前進度值")
+):
     """
-    更新任務完成進度
-    - user_id: 用戶ID
-    - task_id: 任務ID
-    - progress: 當前進度值
+    更新任務完成進度 (使用表單欄位)
+
+    - **user_id**: 用戶ID
+    - **task_id**: 任務ID (ObjectId 字串)
+    - **progress**: 當前進度值
     """
+    # 參數直接從 Form 獲取
     # 檢查用戶是否存在
     user = users_collection.find_one({"user_id": user_id})
     if not user:

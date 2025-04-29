@@ -129,6 +129,21 @@ def create_password_reset_email_content(username: str, reset_link: str) -> str:
     </html>
     """
 
+def create_password_reset_otp_email_content(username: str, otp_code: str) -> str:
+    """建立包含 OTP 的密碼重設郵件 HTML 內容"""
+    return f"""
+    <html>
+    <body>
+        <p>您好 {username},</p>
+        <p>我們收到了您的密碼重設請求。請在 APP 中輸入以下驗證碼來設定您的新密碼：</p>
+        <p style="font-size: 24px; font-weight: bold; letter-spacing: 5px; margin: 20px 0;">{otp_code}</p>
+        <p>這個驗證碼將在 10 分鐘後失效。</p>
+        <p>如果您沒有請求重設密碼，請忽略此郵件。</p>
+        <p>謝謝,<br>Volticar 團隊</p>
+    </body>
+    </html>
+    """
+
 # --- 測試區塊 ---
 if __name__ == "__main__":
     import asyncio
