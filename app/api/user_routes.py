@@ -6,8 +6,9 @@ import uuid
 import os
 import sys # Import sys module
 import secrets
+import random # 引入 random 模組生成 OTP
 from pydantic import EmailStr, BaseModel
-from fastapi import Query # Import Query for the new endpoint
+from fastapi import Query, Form # 引入 Form
 
 from app.models.user import (
     User, UserCreate, UserLogin, # LoginRecord is imported but not used as type hint/response model
@@ -18,7 +19,8 @@ from app.utils.auth import authenticate_user, create_access_token, get_current_u
 from app.services.email_service import ( # Updated import path
     send_email_async,
     create_verification_email_content,
-    create_password_reset_email_content
+    # create_password_reset_email_content, # 改用 OTP 模板
+    create_password_reset_otp_email_content # 引入 OTP 模板函數
 )
 from app.database.mongodb import (
     volticar_db, users_collection, login_records_collection,
@@ -35,10 +37,11 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days
 
 # --- 新增：請求 Email 驗證 ---
 @router.post("/request-verification", response_model=Dict[str, Any], status_code=status.HTTP_200_OK)
-async def request_email_verification(request_data: EmailVerificationRequest):
+async def request_email_verification(email: EmailStr = Form(...)):
     """
-    請求發送 Email 驗證信
-    - email: 要驗證的電子郵件地址
+    請求發送 Email 驗證信 (使用表單欄位)
+
+    - **email**: 要驗證的電子郵件地址
     """
     # --- 新增：檢查資料庫集合是否可用 ---
     if users_collection is None or pending_verifications_collection is None:
@@ -49,7 +52,7 @@ async def request_email_verification(request_data: EmailVerificationRequest):
         )
     # --- 檢查結束 ---
 
-    email = request_data.email
+    # email 參數直接從 Form 獲取
     now = datetime.now()
 
     # 1. 檢查 Email 是否已在正式用戶中註冊
@@ -122,23 +125,29 @@ async def request_email_verification(request_data: EmailVerificationRequest):
 
 # 用戶登入
 @router.post("/login", response_model=Dict[str, Any])
-async def login_user(request: Request, user_login: UserLogin):
+async def login_user(
+    request: Request,
+    username: Optional[str] = Form(None), # 改為 Form 輸入
+    email: Optional[EmailStr] = Form(None), # 改為 Form 輸入
+    password: str = Form(...) # 改為 Form 輸入
+):
     """
-    用戶登入
-    - username: 用戶名稱 (與email二選一)
-    - email: 電子郵件 (與username二選一)
-    - password: 密碼 (必填)
+    用戶登入 (使用表單欄位)
+
+    - **username**: 用戶名稱 (與 email 二選一)
+    - **email**: 電子郵件 (與 username 二選一)
+    - **password**: 密碼 (必填)
     """
     # 準備查詢條件
     query = {}
-    if user_login.username:
-        query["username"] = user_login.username
-    elif user_login.email:
-        query["email"] = user_login.email
+    if username:
+        query["username"] = username
+    elif email:
+        query["email"] = email
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="請提供用戶名或郵箱"
+            detail="請提供用戶名或電子郵件"
         )
 
     # 查詢用戶
@@ -163,7 +172,8 @@ async def login_user(request: Request, user_login: UserLogin):
     # --- 檢查結束 ---
 
     # 只有非 Google 註冊用戶才進行密碼驗證
-    authenticated = authenticate_user(user, user_login.password, password_field="password_hash")
+    # 使用從 Form 獲取的 password
+    authenticated = authenticate_user(user, password, password_field="password_hash")
 
     if not authenticated:
         # 確保密碼錯誤的提示仍然存在
@@ -228,16 +238,18 @@ async def login_user(request: Request, user_login: UserLogin):
 # Request Binding (Phone or Email)
 @router.post("/request-bind", response_model=Dict[str, Any])
 async def request_bind(
-    bind_request: BindRequest,
+    type: str = Form(..., description="'phone' 或 'email'"),
+    value: str = Form(..., description="手機號碼或電子郵件地址"),
     current_user: Dict = Depends(get_current_user)
 ):
     """
-    請求綁定手機號碼或電子郵件，發送驗證碼
-    - type: 'phone' 或 'email'
-    - value: 手機號碼或電子郵件地址
+    請求綁定手機號碼或電子郵件，發送驗證碼 (使用表單欄位)
+
+    - **type**: 'phone' 或 'email'
+    - **value**: 手機號碼或電子郵件地址
     """
-    bind_type = bind_request.type
-    bind_value = bind_request.value
+    bind_type = type # 使用從 Form 獲取的參數
+    bind_value = value # 使用從 Form 獲取的參數
 
     # 檢查綁定類型
     if bind_type not in ["phone", "email"]:
@@ -255,18 +267,21 @@ async def request_bind(
 # Verify Binding (Phone or Email)
 @router.post("/verify-bind", response_model=Dict[str, Any])
 async def verify_binding(
-    verify_request: VerifyBindingRequest,
+    type: str = Form(..., description="'phone' 或 'email'"),
+    value: str = Form(..., description="手機號碼或電子郵件地址"),
+    otp_code: str = Form(..., description="收到的驗證碼"),
     current_user: Dict = Depends(get_current_user)
 ):
     """
-    驗證綁定手機號碼或電子郵件的驗證碼
-    - type: 'phone' 或 'email'
-    - value: 手機號碼或電子郵件地址
-    - otp_code: 收到的驗證碼
+    驗證綁定手機號碼或電子郵件的驗證碼 (使用表單欄位)
+
+    - **type**: 'phone' 或 'email'
+    - **value**: 手機號碼或電子郵件地址
+    - **otp_code**: 收到的驗證碼
     """
-    bind_type = verify_request.type
-    bind_value = verify_request.value
-    otp_code = verify_request.otp_code
+    bind_type = type # 使用從 Form 獲取的參數
+    bind_value = value # 使用從 Form 獲取的參數
+    # otp_code 參數直接從 Form 獲取
 
     # 檢查綁定類型
     if bind_type not in ["phone", "email"]:
@@ -371,115 +386,202 @@ class ForgotPasswordRequest(BaseModel):
     identifier: str # 可以是 email 或 phone
 
 class ResetPasswordRequest(BaseModel):
-    """重設密碼請求模型"""
-    token: str
+    """(最終) 重設密碼請求模型"""
+    # identifier: str # Email - 改為從確認權杖中獲取用戶
+    confirmation_token: str # 從 /verify-reset-otp 獲取的短期權杖
     new_password: str
 
-@router.post("/forgot-password", response_model=Dict[str, Any])
-async def forgot_password(request_data: ForgotPasswordRequest):
-    """
-    請求重設密碼
-    - identifier: 用戶的電子郵件或手機號碼
-    """
-    identifier = request_data.identifier
-    now = datetime.now()
-    expires_delta = timedelta(hours=1) # 權杖有效期 1 小時
-    expires_at = now + expires_delta
+class VerifyOtpRequest(BaseModel):
+    """驗證 OTP 請求模型"""
+    identifier: str # Email
+    otp_code: str
 
-    # 嘗試透過 email 或 phone 尋找用戶
+class VerifyOtpResponse(BaseModel):
+    """驗證 OTP 成功響應模型"""
+    status: str = "success"
+    msg: str = "驗證碼正確"
+    confirmation_token: str # 短期權杖，用於下一步重設密碼
+
+@router.post("/forgot-password", response_model=Dict[str, Any])
+async def forgot_password(identifier: str = Form(..., description="用戶的電子郵件或手機號碼")):
+    """
+    請求發送密碼重設 OTP 驗證碼 (使用表單欄位)
+
+    - **identifier**: 用戶的電子郵件或手機號碼 (目前主要處理 Email)
+    """
+    # identifier 參數直接從 Form 獲取
+    now = datetime.now()
+    # OTP 有效期改為 10 分鐘
+    otp_expires_delta = timedelta(minutes=10)
+    otp_expires_at = now + otp_expires_delta
+
+    # 嘗試透過 email 或 phone 尋找用戶 (優先處理 Email)
     user = users_collection.find_one({"$or": [{"email": identifier}, {"phone": identifier}]})
 
     if not user:
         # 即使找不到用戶，也返回成功訊息以避免洩露用戶資訊
-        print(f"請求重設密碼，但找不到用戶: {identifier}")
-        return {"status": "success", "msg": "如果您的帳戶存在，重設密碼的指示已發送。"}
+        print(f"請求重設密碼 OTP，但找不到用戶: {identifier}")
+        # 即使找不到用戶，也返回成功訊息以避免洩露用戶資訊
+        return {"status": "success", "msg": "如果您的帳戶存在，重設密碼的驗證碼將很快發送。"}
 
-    # 生成安全的重設權杖
-    reset_token = secrets.token_urlsafe(32)
+    # --- 新增：檢查是否為 Google 登入用戶 ---
+    if user.get("login_type") == "google":
+        # Google 登入用戶不能透過此方式重設密碼
+        print(f"用戶 {identifier} 是 Google 登入用戶，無法請求密碼重設 OTP。")
+        # 返回通用成功訊息，避免洩露登入方式
+        return {"status": "success", "msg": "如果您的帳戶存在，重設密碼的驗證碼將很快發送。"}
+    # --- 檢查結束 ---
 
-    # 更新用戶資料庫，儲存權杖和到期時間
+
+    # 生成 6 位數字 OTP
+    otp_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+    print(f"為用戶 {identifier} 生成 OTP: {otp_code}") # 僅供調試，生產環境應移除或記錄到安全日誌
+
+    # 更新用戶資料庫，儲存 OTP 和到期時間
     update_result = users_collection.update_one(
         {"_id": user["_id"]},
         {"$set": {
-            "reset_password_token": reset_token,
-            "reset_password_token_expires_at": expires_at,
-            "updated_at": now
+            "reset_otp_code": otp_code, # 儲存 OTP
+            "reset_otp_expires_at": otp_expires_at, # 儲存 OTP 到期時間
+            "updated_at": now,
+            # 清除舊的 token 欄位 (如果存在)
+            "reset_password_token": None,
+            "reset_password_token_expires_at": None
         }}
     )
 
     if update_result.modified_count == 0:
-         raise HTTPException(status_code=500, detail="無法更新用戶重設密碼權杖")
+         # 可能是資料庫寫入問題
+         print(f"錯誤：無法為用戶 {identifier} 更新 OTP。")
+         raise HTTPException(status_code=500, detail="無法生成密碼重設驗證碼，請稍後再試。")
 
-    # 根據 identifier 類型決定發送方式
+    # --- 修改：發送 OTP 郵件 ---
     email_sent_status = False
     if "@" in identifier and identifier == user.get("email"): # 確保是 email
-        # *** 重要：讀取後端 API 的基礎 URL 來建立重設連結 ***
-        # 建議在環境變數中設定 API_BASE_URL=https://yourdomain:port
-        api_base_url = os.getenv("API_BASE_URL")
-        if not api_base_url:
-            api_base_url = "https://volticar.dynns.com:22000" # *** 請務必在生產環境中設定 API_BASE_URL ***
-            print(f"警告：未設定 API_BASE_URL 環境變數，使用預設值: {api_base_url}")
+        # 使用新的郵件模板函數
+        html_content = create_password_reset_otp_email_content(user.get("username", "用戶"), otp_code)
 
-        # 注意：密碼重設通常還是需要前端頁面來輸入新密碼。
-        # 如果您也想簡化這個流程，可能需要一個能接收 token 和新密碼的後端端點，
-        # 但這會降低安全性，因為連結本身不能直接包含新密碼。
-        # 目前維持指向前端路徑，假設前端會有 /reset-password 頁面。
-        # 如果您沒有前端，這個流程需要重新設計。
-        # 暫時保留前端連結，但提醒您這個依賴。
-        reset_link = f"{api_base_url}/reset-password?token={reset_token}" # 假設前端處理此路徑
-        html_content = create_password_reset_email_content(user.get("username", "用戶"), reset_link)
-
-        # 發送密碼重設郵件
-        email_sent_status = await send_email_async(user["email"], "Volticar 密碼重設請求", html_content)
+        # 發送密碼重設 OTP 郵件
+        email_sent_status = await send_email_async(user["email"], "Volticar 密碼重設驗證碼", html_content)
 
         if email_sent_status:
-            print(f"已向郵箱 {user['email']} 發送密碼重設郵件。")
-            # 即使郵件發送成功，也返回通用成功訊息
-            return {"status": "success", "msg": "如果您的帳戶存在，重設密碼的指示已發送到您的電子郵件。"}
+            print(f"已向郵箱 {user['email']} 發送密碼重設 OTP。")
         else:
-            print(f"錯誤：為郵箱 {user['email']} 生成了重設權杖，但郵件發送失敗。")
+            print(f"錯誤：為郵箱 {user['email']} 生成了 OTP，但郵件發送失敗。")
             # 即使郵件發送失敗，也返回通用成功訊息，避免洩露資訊
             # 但後台應記錄此錯誤
-            return {"status": "success", "msg": "處理您的請求時發生錯誤，請稍後再試或聯繫客服。"}
+            # 為了讓前端知道出錯，可以考慮返回不同的訊息或狀態碼，但目前保持一致
+            # raise HTTPException(status_code=500, detail="發送驗證碼郵件失敗，請稍後再試。")
 
     elif identifier == user.get("phone"): # 確保是 phone
         # 手機號碼處理 (目前僅記錄，待實現 SMS 服務)
-        print(f"收到手機號碼 {identifier} 的重設密碼請求，權杖: {reset_token} (SMS 功能待實現)")
+        print(f"收到手機號碼 {identifier} 的重設密碼請求，OTP: {otp_code} (SMS 功能待實現)")
         # 在實際應用中，這裡應該觸發 SMS 發送
-        return {"status": "success", "msg": "如果您的帳戶存在且綁定了此手機號，重設密碼的指示將發送給您 (目前 SMS 功能待實現)。"}
+
     else:
-        # Identifier 不匹配用戶記錄中的 email 或 phone
-         print(f"請求的 identifier {identifier} 與找到的用戶 {user['user_id']} 不匹配")
-         # 仍然返回通用成功訊息
-         return {"status": "success", "msg": "如果您的帳戶存在，重設密碼的指示將很快發送。"}
+        # Identifier 不匹配用戶記錄中的 email 或 phone (理論上不太可能發生，因為前面已查找)
+         print(f"請求的 identifier {identifier} 與找到的用戶 {user['user_id']} 的 Email/Phone 不匹配")
+
+    # 無論郵件/SMS是否成功，都返回通用成功訊息給前端
+    return {"status": "success", "msg": "如果您的帳戶存在且符合重設條件，驗證碼將很快發送。"}
 
 
-@router.post("/reset-password", response_model=Dict[str, Any])
-async def reset_password(request_data: ResetPasswordRequest):
+# --- 新增：驗證重設密碼 OTP ---
+@router.post("/verify-reset-otp", response_model=VerifyOtpResponse)
+async def verify_reset_otp(
+    identifier: EmailStr = Form(..., description="用戶的電子郵件"),
+    otp_code: str = Form(..., min_length=6, max_length=6, description="從郵件收到的 6 位驗證碼")
+):
     """
-    使用權杖重設密碼
-    - token: 從郵件或簡訊收到的重設權杖
-    - new_password: 新密碼
+    驗證用於重設密碼的 OTP 驗證碼 (使用表單欄位)
+
+    - **identifier**: 用戶的電子郵件
+    - **otp_code**: 從郵件收到的 6 位驗證碼
     """
-    token = request_data.token
-    new_password = request_data.new_password
+    # identifier 和 otp_code 參數直接從 Form 獲取
     now = datetime.now()
 
-    # 尋找使用此權杖且權杖未過期的用戶
+    # 1. 查找用戶，檢查 OTP 和有效期
     user = users_collection.find_one({
-        "reset_password_token": token,
-        "reset_password_token_expires_at": {"$gt": now}
+        "email": identifier,
+        "reset_otp_code": otp_code,
+        "reset_otp_expires_at": {"$gt": now}
     })
 
     if not user:
+        # 可能是 Email 錯誤、OTP 錯誤或 OTP 已過期
+        print(f"OTP 驗證失敗：無效的 Email、OTP 或 OTP 已過期 (Identifier: {identifier}, OTP: {otp_code})")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="無效或已過期的重設密碼權杖"
+            detail="驗證碼無效或已過期"
         )
 
-    # 驗證新密碼強度 (可選，但建議)
+    # 2. 如果有效，生成 confirmation_token，存儲並設置有效期 (例如 5 分鐘)
+    confirmation_token = secrets.token_urlsafe(32)
+    confirmation_token_expires_at = now + timedelta(minutes=5) # 確認權杖有效期 5 分鐘
+
+    update_result = users_collection.update_one(
+        {"_id": user["_id"]},
+        {"$set": {
+            "reset_confirmation_token": confirmation_token,
+            "reset_confirmation_expires_at": confirmation_token_expires_at,
+            "updated_at": now,
+            # 3. 清除 OTP，防止重複使用
+            "reset_otp_code": None,
+            "reset_otp_expires_at": None
+        }}
+    )
+
+    if update_result.modified_count == 0:
+        print(f"錯誤：無法為用戶 {identifier} 更新確認權杖。")
+        raise HTTPException(status_code=500, detail="驗證處理失敗，請稍後再試。")
+
+    print(f"用戶 {identifier} OTP 驗證成功，已生成確認權杖。")
+    # 4. 返回 confirmation_token
+    return VerifyOtpResponse(confirmation_token=confirmation_token)
+
+
+@router.post("/reset-password", response_model=Dict[str, Any])
+async def reset_password(
+    confirmation_token: str = Form(..., description="從 /verify-reset-otp 獲取的短期權杖"),
+    new_password: str = Form(..., min_length=8, description="新密碼 (至少 8 位)")
+):
+    """
+    (最終步驟) 使用確認權杖重設密碼 (使用表單欄位)
+
+    - **confirmation_token**: 從 /verify-reset-otp 獲取的短期權杖
+    - **new_password**: 新密碼 (至少 8 位)
+    """
+    # confirmation_token 和 new_password 參數直接從 Form 獲取
+    now = datetime.now()
+
+    # 根據 confirmation_token 尋找用戶並檢查有效期
+    user = users_collection.find_one({
+        "reset_confirmation_token": confirmation_token,
+        "reset_confirmation_expires_at": {"$gt": now}
+    })
+
+    if not user:
+        # 可能是權杖錯誤或權杖已過期
+        print(f"重設密碼失敗：無效或已過期的確認權杖 (Token: {confirmation_token})")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="重設密碼請求無效或已過期，請重新操作。"
+        )
+
+    # --- 再次檢查是否為 Google 登入用戶 (以防萬一) ---
+    # 這個檢查理論上在 forgot_password 階段就擋掉了，但多一層保險
+    if user.get("login_type") == "google":
+        print(f"錯誤：Google 登入用戶 {user.get('email')} 嘗試使用確認權杖重設密碼。")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google 帳號無法透過此方式重設密碼。"
+        )
+    # --- 檢查結束 ---
+
+    # 驗證新密碼強度
     if len(new_password) < 8:
-         raise HTTPException(status_code=400, detail="新密碼長度至少需要8位")
+         raise HTTPException(status_code=400, detail="新密碼長度至少需要 8 位")
 
     # 更新密碼
     hashed_password = get_password_hash(new_password)
@@ -488,32 +590,38 @@ async def reset_password(request_data: ResetPasswordRequest):
         {"$set": {
             "password_hash": hashed_password,
             "updated_at": now,
-            "reset_password_token": None, # 清除權杖
-            "reset_password_token_expires_at": None # 清除到期時間
+            # 清除確認權杖，防止重複使用
+            "reset_confirmation_token": None,
+            "reset_confirmation_expires_at": None
         }}
     )
 
     if update_result.modified_count == 0:
-        raise HTTPException(status_code=500, detail="重設密碼失敗")
+        # 可能是資料庫寫入問題
+        print(f"錯誤：更新用戶 {user.get('email')} 密碼時失敗 (使用確認權杖)。")
+        raise HTTPException(status_code=500, detail="重設密碼失敗，請稍後再試。")
 
-    print(f"用戶 {user['user_id']} 已成功重設密碼")
+    print(f"用戶 {user['user_id']} ({user.get('email')}) 已成功使用確認權杖重設密碼")
     return {"status": "success", "msg": "密碼已成功重設"}
 
 
 # --- 新增：完成註冊 ---
 @router.post("/complete-registration", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
-async def complete_registration(registration_data: CompleteRegistrationRequest):
+async def complete_registration(
+    email: EmailStr = Form(..., description="已驗證的電子郵件"),
+    username: str = Form(..., description="用戶名稱"),
+    password: str = Form(..., min_length=8, description="密碼 (至少 8 位)"),
+    phone: Optional[str] = Form(None, description="手機號碼 (可選)")
+):
     """
-    在 Email 驗證後，完成使用者註冊
-    - email: 已驗證的電子郵件
-    - username: 用戶名稱
-    - password: 密碼
-    - phone: 手機號碼 (可選)
+    在 Email 驗證後，完成使用者註冊 (使用表單欄位)
+
+    - **email**: 已驗證的電子郵件
+    - **username**: 用戶名稱
+    - **password**: 密碼 (至少 8 位)
+    - **phone**: 手機號碼 (可選)
     """
-    email = registration_data.email
-    username = registration_data.username
-    password = registration_data.password
-    phone = registration_data.phone
+    # 參數直接從 Form 獲取
     now = datetime.now()
 
     # 1. 檢查 Email 是否在 pending 且已驗證
@@ -629,21 +737,26 @@ async def get_user_profile(current_user: Dict = Depends(get_current_user)):
 
 # FCM令牌更新
 @router.post("/update-fcm-token", response_model=Dict[str, Any])
-async def update_fcm_token(token_update: FCMTokenUpdate):
+async def update_fcm_token(
+    user_id: str = Form(..., description="用戶ID"),
+    fcm_token: str = Form(..., description="FCM令牌"),
+    device_info: Optional[str] = Form(None, description="設備信息 (選填)")
+):
     """
-    更新FCM令牌 - 用於推播通知
-    - user_id: 用戶ID (必填)
-    - fcm_token: FCM令牌 (必填)
-    - device_info: 設備信息 (選填)
+    更新FCM令牌 - 用於推播通知 (使用表單欄位)
+
+    - **user_id**: 用戶ID (必填)
+    - **fcm_token**: FCM令牌 (必填)
+    - **device_info**: 設備信息 (選填)
     """
-    print(f"更新FCM令牌，使用者ID: {token_update.user_id}")
+    print(f"更新FCM令牌，使用者ID: {user_id}")
 
     # 更新使用者FCM令牌
     result = users_collection.update_one(
-        {"user_id": token_update.user_id},
+        {"user_id": user_id},
         {"$set": {
-            "fcm_token": token_update.fcm_token,
-            "device_info": token_update.device_info,
+            "fcm_token": fcm_token,
+            "device_info": device_info,
             "token_updated_at": datetime.now()
         }}
     )
@@ -732,15 +845,20 @@ async def get_leaderboard(time_range: str = "week"):
 
 # 添加/刪除好友
 @router.post("/friends", response_model=Dict[str, Any])
-async def manage_friends(friend_action: FriendAction):
+async def manage_friends(
+    user_id: str = Form(..., description="用戶自己的 ID"),
+    friend_id: str = Form(..., description="要添加/刪除的好友 ID"),
+    action: str = Form(..., description="操作類型 ('add' 或 'remove')")
+):
     """
-    管理好友關係
-    - user_id: 用戶ID
-    - friend_id: 好友ID
-    - action: 操作類型，可選值為 "add" 或 "remove"
+    管理好友關係 (使用表單欄位)
+
+    - **user_id**: 用戶自己的 ID
+    - **friend_id**: 要添加/刪除的好友 ID
+    - **action**: 操作類型 ('add' 或 'remove')
     """
     # 檢查用戶是否存在
-    user = users_collection.find_one({"user_id": friend_action.user_id})
+    user = users_collection.find_one({"user_id": user_id})
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -748,7 +866,7 @@ async def manage_friends(friend_action: FriendAction):
         )
 
     # 檢查好友是否存在
-    friend = users_collection.find_one({"user_id": friend_action.friend_id})
+    friend = users_collection.find_one({"user_id": friend_id})
     if not friend:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -756,9 +874,9 @@ async def manage_friends(friend_action: FriendAction):
         )
 
     # 處理添加好友
-    if friend_action.action == "add":
+    if action == "add":
         # 檢查是否已經是好友
-        if "friends" in user and friend_action.friend_id in user["friends"]:
+        if "friends" in user and friend_id in user["friends"]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="已經是好友"
@@ -766,13 +884,13 @@ async def manage_friends(friend_action: FriendAction):
 
         # 添加好友關係（雙向）
         users_collection.update_one(
-            {"user_id": friend_action.user_id},
-            {"$addToSet": {"friends": friend_action.friend_id}}
+            {"user_id": user_id},
+            {"$addToSet": {"friends": friend_id}}
         )
 
         users_collection.update_one(
-            {"user_id": friend_action.friend_id},
-            {"$addToSet": {"friends": friend_action.user_id}}
+            {"user_id": friend_id},
+            {"$addToSet": {"friends": user_id}}
         )
 
         return {
@@ -781,9 +899,9 @@ async def manage_friends(friend_action: FriendAction):
         }
 
     # 處理刪除好友
-    elif friend_action.action == "remove":
+    elif action == "remove":
         # 檢查是否真的是好友
-        if "friends" not in user or friend_action.friend_id not in user["friends"]:
+        if "friends" not in user or friend_id not in user["friends"]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="不是好友"
@@ -791,13 +909,13 @@ async def manage_friends(friend_action: FriendAction):
 
         # 移除好友關係（雙向）
         users_collection.update_one(
-            {"user_id": friend_action.user_id},
-            {"$pull": {"friends": friend_action.friend_id}}
+            {"user_id": user_id},
+            {"$pull": {"friends": friend_id}}
         )
 
         users_collection.update_one(
-            {"user_id": friend_action.friend_id},
-            {"$pull": {"friends": friend_action.user_id}}
+            {"user_id": friend_id},
+            {"$pull": {"friends": user_id}}
         )
 
         return {
@@ -893,12 +1011,17 @@ async def get_user_achievements(user_id: str):
 
 # 兌換獎勵
 @router.post("/redeem-reward", response_model=Dict[str, Any])
-async def redeem_reward(user_id: str = Body(...), points: int = Body(...), reward_id: str = Body(...)):
+async def redeem_reward(
+    user_id: str = Form(..., description="用戶ID"),
+    points: int = Form(..., description="兌換所需積分"),
+    reward_id: str = Form(..., description="獎勵ID")
+):
     """
-    兌換積分獎勵
-    - user_id: 用戶ID
-    - points: 兌換所需積分
-    - reward_id: 獎勵ID
+    兌換積分獎勵 (使用表單欄位)
+
+    - **user_id**: 用戶ID
+    - **points**: 兌換所需積分
+    - **reward_id**: 獎勵ID
     """
     # 查詢用戶
     user = users_collection.find_one({"user_id": user_id})
@@ -1019,16 +1142,27 @@ async def get_charging_stations(user_id: str, location: str):
 
 # 處理Gmail登入
 @router.post("/login/google", summary="使用Google帳號登入")
-async def login_with_google(google_data: GoogleLoginRequest):
+async def login_with_google(
+    google_id: Optional[str] = Form(None, description="Google 用戶 ID"),
+    email: Optional[EmailStr] = Form(None, description="Google 提供的 Email"),
+    name: Optional[str] = Form(None, description="Google 提供的名稱"),
+    picture: Optional[str] = Form(None, description="Google 提供的頭像 URL (可選)")
+    # login_type is implicitly "google"
+):
     """
-    使用Google帳號登入，成功返回JWT令牌
+    使用Google帳號登入，成功返回JWT令牌 (使用表單欄位)
+
+    - **google_id**: Google 用戶 ID
+    - **email**: Google 提供的 Email
+    - **name**: Google 提供的名稱
+    - **picture**: Google 提供的頭像 URL (可選)
     """
     try:
         # 驗證Google ID令牌（簡化版示例，實際應用中應該調用Google API驗證令牌）
         # TODO: 實現完整的Google令牌驗證
 
         # 檢查此Google ID是否有效
-        google_id = google_data.google_id
+        # google_id 參數直接從 Form 獲取
         existing_user = None
 
         # 必須確保google_id有效
@@ -1067,7 +1201,7 @@ async def login_with_google(google_data: GoogleLoginRequest):
             }
         else:
             # 新Google用戶，檢查電子郵件是否已被使用
-            email = google_data.email
+            # email 參數直接從 Form 獲取
             if not email:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -1111,7 +1245,8 @@ async def login_with_google(google_data: GoogleLoginRequest):
             else:
                 # 完全新用戶，創建新帳號
                 user_id = str(uuid.uuid4())
-                username = google_data.name or f"user_{uuid.uuid4().hex[:8]}"
+                # 使用從 Form 獲取的 name
+                username = name or f"user_{uuid.uuid4().hex[:8]}"
 
                 # 確保用戶名不重複
                 if users_collection.find_one({"username": username}):

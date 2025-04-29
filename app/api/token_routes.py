@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Body # Added Body
+from fastapi import APIRouter, HTTPException, status, Body, Form # Added Form
 from typing import Dict, Optional, Any # Added Any
 from datetime import datetime, timedelta
 from pydantic import BaseModel # Added BaseModel
@@ -25,10 +25,19 @@ users_collection = volticar_db["Users"]
 
 # 獲取令牌
 @router.post("/get", response_model=Dict[str, Any])
-async def get_token(token_data: TokenRequest = Body(...)): # Use Pydantic model
-    token = token_data.token
-    device = token_data.device
-    user_uuid = token_data.user_uuid
+async def get_token(
+    user_uuid: str = Form(..., description="用戶的 UUID"),
+    device: str = Form(..., description="設備標識符"),
+    token: Optional[str] = Form(None, description="現有令牌 (可選，用於驗證)")
+):
+    """
+    獲取或驗證用戶令牌 (使用表單欄位)
+
+    - **user_uuid**: 用戶的 UUID
+    - **device**: 設備標識符
+    - **token**: 現有令牌 (可選，用於驗證)
+    """
+    # 參數直接從 Form 獲取
 
     # 檢查用戶是否存在 (使用 user_uuid)
     user = users_collection.find_one({"user_uuid": user_uuid})
@@ -87,10 +96,19 @@ async def get_token(token_data: TokenRequest = Body(...)): # Use Pydantic model
 
 # 保存令牌
 @router.post("/save", response_model=Dict[str, Any])
-async def save_token(token_data: TokenSaveRequest = Body(...)): # Use Pydantic model
-    token = token_data.token
-    device = token_data.device
-    user_uuid = token_data.user_uuid
+async def save_token(
+    user_uuid: str = Form(..., description="用戶的 UUID"),
+    device: str = Form(..., description="設備標識符"),
+    token: str = Form(..., description="要保存的令牌")
+):
+    """
+    保存用戶令牌 (使用表單欄位)
+
+    - **user_uuid**: 用戶的 UUID
+    - **device**: 設備標識符
+    - **token**: 要保存的令牌
+    """
+    # 參數直接從 Form 獲取
 
     # 檢查用戶是否存在 (使用 user_uuid)
     user = users_collection.find_one({"user_uuid": user_uuid})

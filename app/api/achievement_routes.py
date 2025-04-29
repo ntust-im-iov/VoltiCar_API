@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Body # Added Body
+from fastapi import APIRouter, HTTPException, status, Body, Form # Added Form
 from typing import Dict, Any # Removed List
 from datetime import datetime
 from bson import ObjectId # Import ObjectId
@@ -59,10 +59,20 @@ async def get_achievements(user_uuid: str):
 
 # 更新成就進度
 @router.post("/update", response_model=Dict[str, Any])
-async def update_achievement(update_data: AchievementUpdate = Body(...)): # Use Pydantic model
-    user_uuid = update_data.user_uuid
-    achievement_id_str = update_data.achievement_id # Rename to avoid conflict with ObjectId
-    progress = update_data.progress
+async def update_achievement(
+    user_uuid: str = Form(..., description="用戶的 UUID"),
+    achievement_id: str = Form(..., description="成就的 ID (字串格式)"),
+    progress: int = Form(..., description="新的進度值")
+):
+    """
+    更新成就進度 (使用表單欄位)
+
+    - **user_uuid**: 用戶的 UUID
+    - **achievement_id**: 成就的 ID (字串格式)
+    - **progress**: 新的進度值
+    """
+    # 參數直接從 Form 獲取
+    achievement_id_str = achievement_id # Rename to avoid conflict with ObjectId
 
     # 檢查用戶是否存在
     user = users_collection.find_one({"user_uuid": user_uuid})
