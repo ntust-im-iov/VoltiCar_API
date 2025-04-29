@@ -70,8 +70,19 @@ class UserCreate(BaseModel):
 class UserLogin(BaseModel):
     username: Optional[str] = None
     email: Optional[EmailStr] = None
-    phone: Optional[str] = None
+    # phone: Optional[str] = None # 移除 phone 欄位，登入只用 username 或 email
     password: str
+
+# --- 新增：Email 驗證請求模型 ---
+class EmailVerificationRequest(BaseModel):
+    email: EmailStr
+
+# --- 新增：完成註冊請求模型 ---
+class CompleteRegistrationRequest(BaseModel):
+    email: EmailStr
+    username: str
+    password: str
+    phone: Optional[str] = None
 
 # 綁定請求模型 - Used by user_routes.py/request_bind
 class BindRequest(BaseModel):
