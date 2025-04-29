@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException, status, Depends, Body # Added Body
-from typing import List, Dict, Any
+from fastapi import APIRouter, HTTPException, status, Depends, Body, Form # Added Form
+from typing import List, Dict, Any, Optional # Added Optional
 from datetime import datetime
 from pydantic import BaseModel # Added BaseModel
 
@@ -57,16 +57,22 @@ async def get_vehicle_info(user_id: str, vehicle_id: str):
 
 # 添加/註冊新車輛
 @router.post("/", response_model=Dict[str, Any])
-async def register_vehicle(vehicle: VehicleCreate):
+async def register_vehicle(
+    user_id: str = Form(..., description="用戶ID"),
+    vehicle_id: str = Form(..., description="車輛ID"),
+    vehicle_name: Optional[str] = Form(None, description="車輛名稱 (可選)")
+):
     """
-    註冊新車輛
-    - user_id: 用戶ID
-    - vehicle_id: 車輛ID
+    註冊新車輛 (使用表單欄位)
+
+    - **user_id**: 用戶ID
+    - **vehicle_id**: 車輛ID
+    - **vehicle_name**: 車輛名稱 (可選)
     """
     # 檢查車輛是否已經註冊
     existing_vehicle = vehicles_collection.find_one({
-        "user_id": vehicle.user_id,
-        "vehicle_id": vehicle.vehicle_id
+        "user_id": user_id,
+        "vehicle_id": vehicle_id
     })
     
     if existing_vehicle:
@@ -77,9 +83,9 @@ async def register_vehicle(vehicle: VehicleCreate):
     
     # 準備車輛數據
     vehicle_data = {
-        "user_id": vehicle.user_id,
-        "vehicle_id": vehicle.vehicle_id,
-        "vehicle_name": vehicle.vehicle_name or "", # Simplified access
+        "user_id": user_id,
+        "vehicle_id": vehicle_id,
+        "vehicle_name": vehicle_name or "", # Use Form parameter
         "battery_level": 0,
         "battery_health": 100,
         "mileage": 0,
@@ -99,25 +105,33 @@ async def register_vehicle(vehicle: VehicleCreate):
     return {
         "status": "success",
         "msg": "車輛註冊成功",
-        "user_id": vehicle.user_id,
-        "vehicle_id": vehicle.vehicle_id
+        "user_id": user_id,
+        "vehicle_id": vehicle_id
     }
 
-# 更新車輛電池信息 (使用請求體)
+# 更新車輛電池信息 (使用表單欄位)
 @router.put("/{vehicle_id}/battery", response_model=Dict[str, Any]) # Changed to PUT for update
-async def update_battery_info(vehicle_id: str, battery_update: VehicleBatteryUpdate = Body(...)):
+async def update_battery_info(
+    vehicle_id: str,
+    battery_level: int = Form(..., description="電池電量百分比"),
+    battery_health: int = Form(..., description="電池健康度百分比"),
+    lastcharge_mileage: int = Form(..., description="上次充電時的里程數")
+):
     """
-    更新車輛電池資訊 (使用請求體)
-    - vehicle_id: 車輛ID
-    - Request Body: 包含 battery_level, battery_health, lastcharge_mileage
+    更新車輛電池資訊 (使用表單欄位)
+
+    - **vehicle_id**: 車輛ID
+    - **battery_level**: 電池電量百分比
+    - **battery_health**: 電池健康度百分比
+    - **lastcharge_mileage**: 上次充電時的里程數
     """
     # 直接嘗試更新數據，移除 find_one 檢查
     result = vehicles_collection.update_one(
         {"vehicle_id": vehicle_id},
         {"$set": {
-            "battery_level": battery_update.battery_level,
-            "battery_health": battery_update.battery_health,
-            "lastcharge_mileage": battery_update.lastcharge_mileage,
+            "battery_level": battery_level,
+            "battery_health": battery_health,
+            "lastcharge_mileage": lastcharge_mileage,
             "last_updated": datetime.now()
         }}
     )
@@ -140,18 +154,24 @@ async def update_battery_info(vehicle_id: str, battery_update: VehicleBatteryUpd
 
 # 更新車輛資訊
 @router.put("/{vehicle_id}", response_model=Dict[str, Any])
-async def update_vehicle(vehicle_id: str, vehicle: VehicleUpdate):
+async def update_vehicle(
+    vehicle_id: str,
+    vehicle_name: Optional[str] = Form(None, description="新的車輛名稱 (可選)"),
+    mileage: Optional[int] = Form(None, description="新的里程數 (可選)")
+):
     """
-    更新車輛基本資訊
-    - vehicle_id: 車輛ID
-    - Request Body: 包含 vehicle_name, mileage
+    更新車輛基本資訊 (使用表單欄位)
+
+    - **vehicle_id**: 車輛ID
+    - **vehicle_name**: 新的車輛名稱 (可選)
+    - **mileage**: 新的里程數 (可選)
     """
     # 準備更新數據
     update_data = {}
-    if vehicle.vehicle_name is not None:
-        update_data["vehicle_name"] = vehicle.vehicle_name
-    if vehicle.mileage is not None:
-        update_data["mileage"] = vehicle.mileage
+    if vehicle_name is not None:
+        update_data["vehicle_name"] = vehicle_name
+    if mileage is not None:
+        update_data["mileage"] = mileage
     
     if not update_data:
         raise HTTPException(

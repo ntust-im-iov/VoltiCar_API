@@ -4,8 +4,7 @@ services:
   api:
     build: .
     container_name: volticar-api
-    ports:
-      - "0.0.0.0:22000:22000"
+    # 移除 ports 映射，流量將通過 Nginx
     environment:
       - DATABASE_URL=mongodb://Volticar:REMOVED_PASSWORD@59.126.6.46:27017/?authSource=admin
       - VOLTICAR_DB=Volticar
@@ -13,27 +12,30 @@ services:
       - SECRET_KEY=REMOVED_SECRET_KEY
       - API_ENV=development
       - API_HOST=0.0.0.0
-      - API_PORT=22000
+      - API_PORT=8000 # 更新為內部埠
       - PYTHONIOENCODING=utf-8
       - LANG=C.UTF-8
       - LC_ALL=C.UTF-8
-      - SSL_KEYFILE=/etc/certs/live/volticar.dynns.com/privkey.pem
-      - SSL_CERTFILE=/etc/certs/live/volticar.dynns.com/fullchain.pem
+      # 移除 SSL 環境變數，Nginx 將處理 SSL
     volumes:
       - ./app:/app/app
       - ./requirements.txt:/app/requirements.txt
-      - ./logs:/app/logs # 新增日誌資料夾映射
-      - C:\Certbot:/etc/certs
+      - ./logs:/app/logs # 保留日誌映射
+      - C:\Certbot:/etc/certs # 保留憑證映射，以防應用程式內部需要讀取
+    extra_hosts: # 保留 extra_hosts
+      - "volticar.dynns.com:192.168.1.102"
+    # --- 新增埠映射，僅供主機 Nginx 訪問 ---
+    ports:
+      - "127.0.0.1:8000:8000" # 將容器 8000 埠映射到主機 localhost 的 8000 埠
     restart: always
     networks:
       - volticar-network
-    command: >
-      sh -c "
-        chmod +r /etc/certs/live/volticar.dynns.com/privkey.pem /etc/certs/live/volticar.dynns.com/fullchain.pem && \
-        echo 'Attempted to set read permissions on SSL certs.' && \
-        ls -l /etc/certs/live/volticar.dynns.com/privkey.pem /etc/certs/live/volticar.dynns.com/fullchain.pem && \
-        uvicorn main:app --host 0.0.0.0 --port 22000 --ssl-keyfile=/etc/certs/live/volticar.dynns.com/privkey.pem --ssl-certfile=/etc/certs/live/volticar.dynns.com/fullchain.pem
-      "
+    command: > # 保持 --proxy-headers，並信任來自 localhost 和 Docker 內部連接 IP 的代理標頭
+      uvicorn main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='127.0.0.1,172.18.0.1'
+
+# --- 移除 Nginx 服務 ---
+# nginx:
+#   ... (整個 nginx 服務區塊被移除)
 
 networks:
   volticar-network:
