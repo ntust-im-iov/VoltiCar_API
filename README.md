@@ -19,15 +19,33 @@
     - **個人資料**: `GET /users/profile` 獲取用戶資訊。
     - **FCM Token**: `POST /users/update-fcm-token` 更新用於推播通知的 Firebase Cloud Messaging Token。
 - **充電站管理**：查詢、創建充電站 (`/stations`相關路由)。
-- **車輛管理**：車輛註冊、電池狀態更新、車輛信息查詢 (`/vehicles`相關路由)。
+- **車輛管理**：
+    - 車輛註冊 (`POST /vehicles`)：註冊玩家擁有的車輛實例，實例的唯一ID (`instance_id`) 由服務端生成。請求時需提供基於哪個車輛定義的 `vehicle_id`。
+    - 車輛信息查詢 (`GET /vehicles/user/{user_id}` 獲取用戶所有車輛, `GET /vehicles/{user_id}/{instance_id}` 獲取特定車輛實例信息)。
+    - 車輛動態信息更新 (`PUT /vehicles/{instance_id}`)：如電池狀態、里程等。
+- **遊戲設定/會話準備** (大部分端點位於 `/api/v1` 前綴下)：
+    - **車輛選擇**:
+        - `GET /api/v1/player/vehicles`: 列出玩家可選擇的車輛（包括自有車輛的實例ID和可租用車輛的定義ID）。
+        - `PUT /api/v1/player/game_session/vehicle`: 玩家為當前遊戲會話選擇一個車輛定義。
+    - **目的地選擇**:
+        - `GET /api/v1/player/destinations`: 列出玩家可選擇的目的地。
+        - `PUT /api/v1/player/game_session/destination`: 玩家為當前遊戲會話選擇目的地。
+    - **貨物選擇**:
+        - `GET /api/v1/player/warehouse/items`: 列出玩家倉庫中的物品及其數量。
+        - `PUT /api/v1/player/game_session/cargo`: 玩家為當前會話選擇要運輸的貨物，系統會校驗貨物總量是否超出所選車輛的載重和容積限制。此為暫存選擇，非實際扣減倉庫物品。
+    - **會話總覽與開始**:
+        - `GET /api/v1/player/game_session/summary`: 獲取當前遊戲會話設定（已選車輛、貨物、目的地）的總覽。
+        - `POST /api/v1/player/game_session/start`: 根據當前設定開始一個新的遊戲會話。
 - **充電記錄**：記錄用戶充電活動並計算碳積分 (相關邏輯整合在其他服務中)。
 - **社群系統**：
     - `POST /users/friends`: 添加/移除好友。
     - `GET /users/leaderboard`: 查看積分排行榜。
-- **任務與成就**：
-    - `GET /users/tasks`: 獲取用戶任務列表。
+- **任務與成就** (玩家任務相關端點位於 `/api/v1` 前綴下)：
+    - `GET /api/v1/tasks/`: 列出所有可用的任務定義。
+    - `POST /api/v1/player/tasks/`: 玩家接受一個任務。如果玩家之前放棄過同一定義的任務，則會重用該記錄而非創建新記錄。
+    - `DELETE /api/v1/player/tasks/{player_task_uuid}`: 玩家放棄一個已接受的任務（標記為已放棄）。
+    - `GET /api/v1/player/tasks/`: 獲取特定玩家的任務列表（可按狀態篩選）。
     - `GET /users/achievements`: 獲取用戶成就列表。
-    - `POST /tasks/complete`: 更新任務進度。
 - **獎勵系統**：
     - `POST /users/redeem-reward`: 使用積分兌換獎勵。
     - `GET /users/inventory`: 查看用戶物品庫。
@@ -52,12 +70,13 @@ volticar_api/
 ├── app/                    # 應用主目錄
 │   ├── api/                # API路由模塊
 │   │   ├── __init__.py
-│   │   ├── user_routes.py  # 用戶、認證、社群、任務、獎勵等
-│   │   ├── vehicle_routes.py # 車輛管理
-│   │   ├── station_routes.py # 充電站管理
-│   │   ├── task_routes.py  # 任務定義 (可能與 user_routes 整合)
-│   │   └── token_routes.py # JWT Token 相關 (可能與 user_routes 整合)
-│   │   └── achievement_routes.py # 成就定義 (可能與 user_routes 整合)
+│   │   ├── user_routes.py  # 用戶核心、認證、社群、獎勵等 (多數在 /users 前綴下)
+│   │   ├── vehicle_routes.py # 玩家擁有車輛實例管理 (prefix: /vehicles)
+│   │   ├── station_routes.py # 充電站管理 (prefix: /stations)
+│   │   ├── task_routes.py  # 任務定義與玩家任務實例 (prefixes: /api/v1/tasks, /api/v1/player/tasks)
+│   │   ├── game_setup_routes.py # 遊戲會話準備流程 (prefix: /api/v1)
+│   │   ├── token_routes.py # Token 相關 (prefix: /token)
+│   │   └── achievement_routes.py # 成就相關 (prefix: /achievements)
 │   │
 │   ├── database/           # 數據庫連接
 │   │   └── mongodb.py      # MongoDB 初始化與集合定義
@@ -182,15 +201,39 @@ API 使用 FastAPI 自動生成交互式文檔。服務運行後，訪問 `/docs
 - `POST /users/update-fcm-token`: 更新 FCM Token
 - `POST /users/friends`: 添加/刪除好友
 - `GET /users/leaderboard`: 排行榜
-- `GET /users/tasks`: 任務列表
 - `GET /users/achievements`: 成就列表
 - `POST /users/redeem-reward`: 兌換獎勵
 - `GET /users/inventory`: 物品庫
-- `GET /vehicles/user/{user_id}`: 獲取用戶車輛
-- `POST /vehicles`: 註冊車輛
-- `POST /vehicles/{vehicle_id}/battery`: 更新電池狀態
-- `GET /stations`: 獲取充電站
-- `POST /stations`: 創建充電站
+
+- **車輛管理 (`/vehicles` prefix):**
+    - `GET /vehicles/user/{user_id}`: 獲取指定用戶的所有車輛實例。
+    - `POST /vehicles/`: 註冊一個新的玩家車輛實例 (實例ID由服務端生成)。
+    - `GET /vehicles/{user_id}/{instance_id}`: 獲取特定車輛實例的詳細信息。
+    - `PUT /vehicles/{instance_id}`: 更新特定車輛實例的動態信息 (如電池、里程)。
+    - (注意: 原 `POST /vehicles/{vehicle_id}/battery` 端點功能已整合到 `PUT /vehicles/{instance_id}`)
+
+- **遊戲設定/會話準備 (`/api/v1` prefix):**
+    - `GET /api/v1/player/vehicles`: 列出玩家可選擇的車輛。
+    - `PUT /api/v1/player/game_session/vehicle`: 選擇用於會話的車輛。
+    - `GET /api/v1/player/destinations`: 列出可選目的地。
+    - `PUT /api/v1/player/game_session/destination`: 選擇目的地。
+    - `GET /api/v1/player/warehouse/items`: 列出玩家倉庫物品。
+    - `PUT /api/v1/player/game_session/cargo`: 選擇貨物。
+    - `GET /api/v1/player/game_session/summary`: 獲取會話設定總覽。
+    - `POST /api/v1/player/game_session/start`: 開始遊戲會話。
+
+- **任務系統 (`/api/v1` prefix):**
+    - `GET /api/v1/tasks/`: 列出可用的任務定義。
+    - `POST /api/v1/player/tasks/`: 玩家接受任務 (會重用已放棄的記錄)。
+    - `DELETE /api/v1/player/tasks/{player_task_uuid}`: 玩家放棄任務。
+    - `GET /api/v1/player/tasks/`: 獲取玩家的任務列表。
+
+- **充電站 (`/stations` prefix):**
+    - `GET /stations`: 獲取充電站列表 (支持按城市、地理範圍查詢及分頁)。
+    - `POST /stations`: 創建充電站。
+    - `GET /stations/overview`: 地圖概覽 API。
+    - `GET /stations/city/{city}`: 按城市查詢 API。
+
 - `GET /health`: 健康檢查
 
 ## 充電站地圖 API 優化與使用建議
