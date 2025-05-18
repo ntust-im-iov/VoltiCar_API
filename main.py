@@ -64,7 +64,11 @@ logger.info(f"日誌系統已設定完成，本次啟動日誌將輸出到控制
 app = FastAPI(
     title="電動汽車充電站API",
     description="用於管理電動汽車充電站和用戶充電記錄的API",
-    version="1.0.0"
+    version="1.0.0",
+    swagger_ui_parameters={
+        "docExpansion": "none",
+        "defaultModelsExpandDepth": -1
+    }
 )
 
 # 配置CORS
