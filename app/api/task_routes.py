@@ -4,13 +4,14 @@ from datetime import datetime
 from bson import ObjectId # Import ObjectId if task_id is expected to be an ObjectId string
 
 # Removed Task import from app.models.user
-from app.database.mongodb import volticar_db
+# from app.database.mongodb import volticar_db # Remove direct import of db
+from app.database import mongodb as db_provider # Import the module itself
 
 router = APIRouter(prefix="/tasks", tags=["任務"])
 
-# 初始化集合
-tasks_collection = volticar_db["Tasks"]
-users_collection = volticar_db["Users"]
+# 初始化集合 - These will be accessed via db_provider inside functions
+# tasks_collection = volticar_db["Tasks"]
+# users_collection = volticar_db["Users"]
 
 # 獲取每日任務
 @router.get("/daily", response_model=Dict[str, Any])
@@ -19,8 +20,11 @@ async def get_daily_tasks(user_id: str):
     獲取用戶當日可完成的任務
     - user_id: 用戶ID
     """
+    if db_provider.users_collection is None or db_provider.tasks_collection is None:
+        raise HTTPException(status_code=503, detail="任務或用戶資料庫服務未初始化")
+
     # 檢查用戶是否存在
-    user = users_collection.find_one({"user_id": user_id})
+    user = await db_provider.users_collection.find_one({"user_id": user_id}) # await
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -29,11 +33,12 @@ async def get_daily_tasks(user_id: str):
     
     # 獲取今日的任務
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    daily_tasks = list(tasks_collection.find({
+    daily_tasks_cursor = db_provider.tasks_collection.find({ # find returns a cursor
         "type": "daily",
         "available_from": {"$lte": datetime.now()},
         "available_to": {"$gte": datetime.now()}
-    }))
+    })
+    daily_tasks = await daily_tasks_cursor.to_list(length=None) # await and to_list
     
     # 格式化任務
     formatted_tasks = []
@@ -72,8 +77,11 @@ async def complete_task(
     - **progress**: 當前進度值
     """
     # 參數直接從 Form 獲取
+    if db_provider.users_collection is None or db_provider.tasks_collection is None:
+        raise HTTPException(status_code=503, detail="任務或用戶資料庫服務未初始化")
+
     # 檢查用戶是否存在
-    user = users_collection.find_one({"user_id": user_id})
+    user = await db_provider.users_collection.find_one({"user_id": user_id}) # await
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -82,13 +90,13 @@ async def complete_task(
     
     # 檢查任務是否存在 (假設 task_id 是 ObjectId 字符串)
     try:
-        task = tasks_collection.find_one({"_id": ObjectId(task_id)})
+        task = await db_provider.tasks_collection.find_one({"_id": ObjectId(task_id)}) # await
     except Exception: # Handle invalid ObjectId format
         task = None
 
     if not task:
         # Optionally, try finding by a 'task_id' field if it exists and is different from _id
-        # task = tasks_collection.find_one({"task_id": task_id})
+        # task = await db_provider.tasks_collection.find_one({"task_id": task_id}) # await
         # if not task:
         raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -103,7 +111,7 @@ async def complete_task(
     
     # 更新用戶的任務進度
     task_key = f"tasks.{str(task['_id'])}"
-    result = users_collection.update_one(
+    result = await db_provider.users_collection.update_one( # await
         {"user_id": user_id},
         {"$set": {
             f"{task_key}.progress": progress,
@@ -121,7 +129,7 @@ async def complete_task(
     ):
         reward = task.get("reward", {})
         if "carbon_credits" in reward and reward["carbon_credits"] > 0:
-            users_collection.update_one(
+            await db_provider.users_collection.update_one( # await
                 {"user_id": user_id},
                 {"$inc": {"carbon_credits": reward["carbon_credits"]}}
             )
@@ -141,8 +149,11 @@ async def get_all_tasks():
     """
     獲取系統中所有可用的任務列表（管理用）
     """
+    if db_provider.tasks_collection is None:
+        raise HTTPException(status_code=503, detail="任務資料庫服務未初始化")
     # 獲取所有任務
-    all_tasks = list(tasks_collection.find())
+    all_tasks_cursor = db_provider.tasks_collection.find({}) # find returns a cursor
+    all_tasks = await all_tasks_cursor.to_list(length=None) # await and to_list
     
     # 格式化任務
     formatted_tasks = []
