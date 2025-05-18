@@ -1,7 +1,9 @@
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Request
 from typing import List, Dict, Any, Optional
 from bson import ObjectId
 import logging
+from main import limiter # 從 main.py 匯入 limiter
+from app.utils.cache import get_redis_connection, get_cache, set_cache, create_cache_key
 
 from app.models.station import ChargeStation, ChargeStationCreate
 # from app.database.mongodb import get_charge_station_collection # Will be accessed via db_provider
@@ -47,20 +49,35 @@ CITY_COLLECTIONS = list(CITY_MAPPING.values())
 
 # 按城市查詢充電站
 @router.get("/city/{city}", response_model=List[Dict[str, Any]])
-async def get_stations_by_city(city: str):
+@limiter.limit("10/minute")
+async def get_stations_by_city(
+    request: Request, 
+    city: str,
+    skip: int = 0,
+    limit: int = 100  # 預設每頁100筆
+):
+    redis = await get_redis_connection(request)
+    cache_key_params = {"city": city, "skip": skip, "limit": limit}
+    cache_key = create_cache_key("stations_by_city", **cache_key_params)
+
+    if redis:
+        cached_stations = await get_cache(redis, cache_key)
+        if cached_stations is not None:
+            return cached_stations
+
     collection_name = CITY_MAPPING.get(city, city)
-    logger.info(f"查詢城市: {city}, 映射到集合: {collection_name}")
+    logger.info(f"查詢城市: {city}, 映射到集合: {collection_name}, 分頁: skip={skip}, limit={limit}")
     logger.info(f"充電站資訊加載中...")
 
     try:
-        # 檢查城市名稱是否在支援列表中
+        if db_provider.charge_station_db is None:
+            raise HTTPException(status_code=503, detail="充電站資料庫服務未初始化")
+        
+        # 檢查城市名稱是否在支援列表中 (這部分邏輯可以考慮是否也快取城市列表)
         if collection_name not in CITY_COLLECTIONS and collection_name not in list(
             CITY_MAPPING.values()
         ):
-            # 嘗試查找相近的城市
-            if db_provider.charge_station_db is None:
-                raise HTTPException(status_code=503, detail="充電站資料庫服務未初始化")
-            all_collection_names = await db_provider.get_charge_station_collection() # await
+            all_collection_names = await db_provider.get_charge_station_collection()
             matching_cities = [
                 c for c in all_collection_names if collection_name.lower() in c.lower()
             ]
@@ -70,34 +87,32 @@ async def get_stations_by_city(city: str):
                 )
                 collection_name = matching_cities[0]
 
-        # 通過 mongodb.py 獲取城市集合
-        if db_provider.charge_station_db is None: # Check again before specific city collection access
-             raise HTTPException(status_code=503, detail="充電站資料庫服務未初始化")
-        city_collection = await db_provider.get_charge_station_collection(collection_name) # await
+        city_collection = await db_provider.get_charge_station_collection(collection_name)
         if city_collection is None:
-            # 如果集合不存在，直接返回 404
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"未找到城市 '{city}' 的充電站資料",
             )
 
-        # 使用獲取的集合進行查詢
-        stations_cursor = city_collection.find() # find returns a cursor
-        stations = await stations_cursor.to_list(length=None) # await and to_list, length=None to get all
-        logger.info(f"在集合 {collection_name} 中找到 {len(stations)} 個充電站")
+        stations_cursor = city_collection.find().skip(skip).limit(limit)
+        stations_list = await stations_cursor.to_list(length=limit)
+        logger.info(f"在集合 {collection_name} 中找到 {len(stations_list)} 個充電站 (分頁 skip={skip}, limit={limit})")
+        
+        processed_stations = handle_mongo_data(stations_list)
+        # 添加城市標識
+        for station_data in processed_stations:
+            station_data["city_collection"] = collection_name
+        
         logger.info(f"充電站資訊加載完成")
 
-        # 添加城市標識
-        for station in stations:
-            station["city_collection"] = collection_name
-
-        return handle_mongo_data(stations)
+        if redis:
+            await set_cache(redis, cache_key, processed_stations)
+        
+        return processed_stations
 
     except HTTPException as http_exc:
-        # 重新拋出已知的 HTTP 異常
         raise http_exc
     except Exception as e:
-        # 捕獲其他潛在錯誤
         logger.error(f"查詢城市 '{city}' 充電站時發生錯誤: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -106,84 +121,137 @@ async def get_stations_by_city(city: str):
 
 
 # 根據ID獲取充電站
-@router.get("/{station_id}", response_model=Dict[str, Any])
-async def get_station(station_id: str):
+@router.get("/id/{station_id}", response_model=Dict[str, Any]) # 將路徑改為 /id/{station_id} 以避免衝突
+@limiter.limit("30/minute")
+async def get_station(request: Request, station_id: str):
     logger.info(f"查詢充電站ID: {station_id}")
     logger.info(f"充電站資訊加載中...")
 
     try:
         if db_provider.charge_station_db is None:
             raise HTTPException(status_code=503, detail="充電站資料庫服務未初始化")
-        # 通過 mongodb.py 獲取所有城市的集合名
-        city_collection_names = await db_provider.get_charge_station_collection() # await
 
-        # 在每個城市集合中查找匹配的station_id
-        for city_name in city_collection_names:
+        # 優先從 AllChargingStations 集合查詢
+        optimized_collection = db_provider.charge_station_db["AllChargingStations"]
+        # 假設 AllChargingStations 集合中的 StationID 是唯一的，並且已索引
+        # 或者如果 station_id 是 MongoDB ObjectId，則按 _id 查詢
+        
+        search_query = {}
+        is_object_id = False
+        if len(station_id) == 24:
             try:
-                # 通過 mongodb.py 獲取特定城市的集合
-                if db_provider.charge_station_db is None: # Check again
-                    raise HTTPException(status_code=503, detail="充電站資料庫服務未初始化")
-                city_collection = await db_provider.get_charge_station_collection(city_name) # await
+                ObjectId(station_id)
+                is_object_id = True
+            except:
+                pass
+        
+        if is_object_id:
+            search_query = {"_id": ObjectId(station_id)}
+        else:
+            search_query = {"StationID": station_id}
+            
+        station = await optimized_collection.find_one(search_query)
+
+        if station:
+            station_data = handle_mongo_data(station)
+            # 注意：從 AllChargingStations 返回的數據可能沒有 city_collection 欄位
+            # 如果需要，可能要額外邏輯來確定或標記來源
+            logger.info(f"在 AllChargingStations 集合找到充電站 {station_id}")
+            logger.info(f"充電站資訊加載完成")
+            return station_data
+
+        # 如果在 AllChargingStations 中未找到，再嘗試遍歷各城市集合 (備用邏輯)
+        logger.info(f"在 AllChargingStations 未找到 {station_id}，嘗試遍歷城市集合...")
+        city_collection_names = await db_provider.get_charge_station_collection() 
+
+        for city_name in city_collection_names:
+            if city_name == "AllChargingStations": # 避免重複查詢
+                continue
+            try:
+                city_collection = await db_provider.get_charge_station_collection(city_name)
                 if city_collection is None:
                     continue
 
-                # 嘗試使用StationID字段查找
-                station = await city_collection.find_one({"StationID": station_id}) # await
-                if station:
-                    station = handle_mongo_data(station)
-                    station["city_collection"] = city_name
+                # 重新使用 search_query
+                station_in_city = await city_collection.find_one(search_query)
+                
+                if station_in_city:
+                    station_data = handle_mongo_data(station_in_city)
+                    station_data["city_collection"] = city_name # 標記來源城市集合
                     logger.info(f"在 {city_name} 找到充電站 {station_id}")
                     logger.info(f"充電站資訊加載完成")
-                    return station
-
-                # 如果未找到，嘗試使用MongoDB的_id字段查找
-                if len(station_id) == 24:  # ObjectId長度為24
-                    try:
-                        station = await city_collection.find_one( # await
-                            {"_id": ObjectId(station_id)}
-                        )
-                        if station:
-                            station = handle_mongo_data(station)
-                            station["city_collection"] = city_name
-                            logger.info(
-                                f"在 {city_name} 找到充電站 {station_id} (使用ObjectId)"
-                            )
-                            logger.info(f"充電站資訊加載完成")
-                            return station
-                    except: # NOSONAR
-                        pass
+                    return station_data
             except Exception as e:
                 logger.error(f"在城市 {city_name} 中搜索站點 {station_id} 時出錯: {e}")
 
-        # 如果所有集合都未找到匹配的記錄
-        logger.warning(f"在所有城市集合中都找不到充電站 ID: {station_id}")
+        logger.warning(f"在所有集合中都找不到充電站 ID: {station_id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="充電站未找到"
         )
+    except HTTPException as http_exc:
+        raise http_exc
     except Exception as e:
-        if isinstance(e, HTTPException):
-            raise e
+        logger.error(f"查詢充電站 {station_id} 時發生錯誤: {e}")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=f"查詢失敗: {str(e)}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"查詢失敗: {str(e)}"
         )
 
 
 # 獲取所有充電站 (優化地圖概覽)
-@router.get("/", response_model=List[Dict[str, Any]])
-async def get_all_stations_overview():
+@router.get("/overview", response_model=List[Dict[str, Any]]) # 將路徑改為 /overview
+@limiter.limit("10/minute")
+async def get_all_stations_overview(
+    request: Request,
+    min_lat: Optional[float] = None,
+    min_lon: Optional[float] = None,
+    max_lat: Optional[float] = None,
+    max_lon: Optional[float] = None
+):
     """
     高效獲取所有充電站的最小化信息，用於地圖概覽。
+    可選的地理邊界框參數用於進行地理空間查詢。
     從名為 'AllChargingStations' 的優化集合中查詢。
+    假設該集合中有一個名為 'location_geo' 的 GeoJSON Point 欄位，並已建立 2dsphere 索引。
+    例如: location_geo: { type: "Point", coordinates: [longitude, latitude] }
     """
+    redis = await get_redis_connection(request)
+    cache_key_params = {
+        "min_lat": min_lat, "min_lon": min_lon, 
+        "max_lat": max_lat, "max_lon": max_lon
+    }
+    # 移除值為 None 的參數，以確保快取鍵的一致性
+    cache_key_params = {k: v for k, v in cache_key_params.items() if v is not None}
+    cache_key = create_cache_key("stations_overview", **cache_key_params)
+
+    if redis:
+        cached_overview = await get_cache(redis, cache_key)
+        if cached_overview is not None:
+            return cached_overview
+            
     try:
-        logger.info("全局地圖充電站概覽資訊加載中...")
+        query = {}
+        log_message = "全局地圖充電站概覽資訊加載中..."
+
+        if all(v is not None for v in [min_lat, min_lon, max_lat, max_lon]):
+            log_message = f"地圖充電站概覽資訊加載中，邊界框: ({min_lon},{min_lat}) 至 ({max_lon},{max_lat})"
+            query = {
+                "location_geo": {
+                    "$geoWithin": {
+                        "$box": [
+                            [min_lon, min_lat],
+                            [max_lon, max_lat]
+                        ]
+                    }
+                }
+            }
+        elif any(v is not None for v in [min_lat, min_lon, max_lat, max_lon]):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="請提供完整的地理邊界框參數 (min_lat, min_lon, max_lat, max_lon) 或不提供任何參數以獲取所有站點。"
+            )
         
-        # 假設優化的單一集合名稱為 "AllChargingStations"
-        # 這個集合應該在 charge_station_db 資料庫中
-        # 您需要手動創建此集合並將所有城市的充電站數據合併進去
-        # 並為 Location.Coordinates 創建 2dsphere 索引
+        logger.info(log_message)
         
-        # 從 app.database.mongodb 獲取 charge_station_db
         from app.database.mongodb import charge_station_db
         if charge_station_db is None:
             logger.error("charge_station_db 未初始化。")
@@ -193,33 +261,24 @@ async def get_all_stations_overview():
             )
 
         optimized_collection = charge_station_db["AllChargingStations"]
-
-        # 定義投影，只選擇必要的欄位
-        # 根據您提供的圖片更新欄位名稱
         projection = {
-            "_id": 0, 
-            "StationID": 1,
-            "PositionLat": 1, # 更新緯度欄位
-            "PositionLon": 1, # 更新經度欄位
-            # "Status": 1, # 暫時移除，因為圖片中沒有直接對應的單一狀態欄位
-            "Connectors": 1, # 包含 Connectors 陣列，客戶端可從中提取插頭類型
-            "ChargingPoints": 1, # 可以考慮加入充電點數量作為狀態參考
-            "Spaces": 1 # 或者可用車位數量
+            "_id": 0, "StationID": 1, "PositionLat": 1, "PositionLon": 1,
+            "Connectors": 1, "ChargingPoints": 1, "Spaces": 1,
         }
 
-        stations_cursor = optimized_collection.find({}, projection)
-        all_stations_overview = await stations_cursor.to_list(length=None) # 獲取所有文檔
+        stations_cursor = optimized_collection.find(query, projection)
+        all_stations_overview_list = await stations_cursor.to_list(length=None)
         
-        count = len(all_stations_overview)
+        count = len(all_stations_overview_list)
         logger.info(f"從 AllChargingStations 集合獲取了 {count} 個充電站的概覽資訊。")
 
-        # 由於投影已經處理了 ObjectId，這裡可能不需要 handle_mongo_data
-        # 但如果 StationID 本身是 ObjectId，或者其他欄位需要轉換，則保留
-        # 為了安全起見，暫時保留，但理想情況下投影後的數據應該是乾淨的
-        
-        # 直接返回列表，因為我們期望的是一個列表
-        return all_stations_overview
+        if redis:
+            await set_cache(redis, cache_key, all_stations_overview_list)
+            
+        return all_stations_overview_list
 
+    except HTTPException as http_exc:
+        raise http_exc
     except Exception as e:
         logger.error(f"獲取全局充電站概覽時發生錯誤: {e}")
         raise HTTPException(
@@ -230,7 +289,9 @@ async def get_all_stations_overview():
 
 # 創建新充電站
 @router.post("/", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 async def create_station(
+    request: Request,
     station: ChargeStationCreate, current_user: Dict = Depends(get_current_user) # Make sure get_current_user is async if it does IO
 ):
     try:

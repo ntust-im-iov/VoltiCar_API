@@ -12,3 +12,5 @@ email-validator>=2.0.0
 requests>=2.31.0
 aiofiles>=0.6.0
 aiosmtplib>=1.1.6
+slowapi==0.1.9
+redis==5.0.1
