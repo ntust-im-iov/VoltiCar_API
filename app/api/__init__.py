@@ -32,16 +32,27 @@ except Exception as e:
     traceback.print_exc(file=sys.stdout)
 
 try:
-    from app.api.task_routes import router as task_router
-    api_router.include_router(task_router)
-    print("✓ 任務API路由已載入")
+    # Modified import for new task routers
+    from app.api.task_routes import task_definition_router, player_task_router
+    api_router.include_router(task_definition_router, prefix="/api/v1") # Add prefix here or in main.py
+    api_router.include_router(player_task_router, prefix="/api/v1")   # Add prefix here or in main.py
+    print("✓ 任務定義API路由已載入 (task_definition_router)")
+    print("✓ 玩家任務API路由已載入 (player_task_router)")
 except Exception as e:
-    print(f"✗ 載入任務API路由時出錯: {str(e)}")
+    print(f"✗ 載入任務相關API路由時出錯: {str(e)}")
+    traceback.print_exc(file=sys.stdout)
+
+try:
+    from app.api.game_setup_routes import game_setup_router # New game setup router
+    api_router.include_router(game_setup_router, prefix="/api/v1") # Add prefix here or in main.py
+    print("✓ 遊戲設定API路由已載入 (game_setup_router)")
+except Exception as e:
+    print(f"✗ 載入遊戲設定API路由時出錯: {str(e)}")
     traceback.print_exc(file=sys.stdout)
 
 try:
     from app.api.token_routes import router as token_router
-    api_router.include_router(token_router)
+    api_router.include_router(token_router) # Assuming this router does not need /api/v1 prefix or handles it internally
     print("✓ 令牌API路由已載入")
 except Exception as e:
     print(f"✗ 載入令牌API路由時出錯: {str(e)}")
@@ -53,4 +64,4 @@ try:
     print("✓ 成就API路由已載入")
 except Exception as e:
     print(f"✗ 載入成就API路由時出錯: {str(e)}")
-    traceback.print_exc(file=sys.stdout) 
+    traceback.print_exc(file=sys.stdout)
