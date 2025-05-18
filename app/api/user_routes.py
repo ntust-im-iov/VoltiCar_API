@@ -459,8 +459,15 @@ async def complete_registration(
 
 # --- Other Endpoints ---
 @router.get("/profile", response_model=Dict[str, Any])
-async def get_user_profile(current_user: Dict = Depends(get_current_user)):
-    user_info = {"username": current_user.get("username", ""), "user_id": current_user.get("user_id", ""), "email": current_user.get("email", ""), "phone": current_user.get("phone", "")}
+async def get_user_profile(current_user: User = Depends(get_current_user)): # Changed type hint to User
+    # Access attributes directly from the Pydantic User model instance
+    user_info = {
+        "username": current_user.username,
+        "user_id": current_user.user_id, # This is the custom UUID
+        "email": current_user.email,
+        "phone": current_user.phone,
+        # "_id": str(current_user.id) if current_user.id else None # If you also want to return MongoDB _id
+    }
     return {"status": "success", "msg": "獲取用戶資訊成功", "user_info": user_info}
 
 @router.post("/update-fcm-token", response_model=Dict[str, Any])
@@ -545,21 +552,51 @@ async def manage_friends(
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="無效的操作，應為 'add' 或 'remove'")
 
-@router.get("/tasks", response_model=Dict[str, Any])
-async def get_user_tasks(user_id: str):
-    if db_provider.users_collection is None or db_provider.tasks_collection is None:
+@router.get("/tasks", response_model=Dict[str, Any]) # This path might be /user/tasks or /player/tasks based on other routes
+async def get_user_tasks(user_id: str): # user_id here is the custom UUID string
+    # Ensure correct collection names are used as defined in db_provider (mongodb.py)
+    if db_provider.users_collection is None or db_provider.task_definitions_collection is None or db_provider.player_tasks_collection is None:
         raise HTTPException(status_code=503, detail="任務或用戶資料庫服務未初始化")
+    
     user = await db_provider.users_collection.find_one({"user_id": user_id})
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用戶不存在")
-    all_tasks_cursor = db_provider.tasks_collection.find({})
-    all_tasks = await all_tasks_cursor.to_list(length=None)
-    user_tasks = []
-    for task in all_tasks:
-        progress = 0
-        if "user_tasks" in user and str(task["_id"]) in user["user_tasks"]:
-            progress = user["user_tasks"][str(task["_id"])]["progress"]
-        user_tasks.append({"task_id": str(task["_id"]), "description": task.get("description", ""), "progress": progress, "reward": task.get("reward", {})})
+
+    # This endpoint seems to intend to list tasks a user has interacted with,
+    # or all available tasks with user-specific progress.
+    # Let's assume it's about tasks the player has accepted (from PlayerTasks)
+    # and then enrich with TaskDefinition details.
+
+    player_tasks_cursor = db_provider.player_tasks_collection.find({"player_id": user_id})
+    player_tasks_list = await player_tasks_cursor.to_list(length=None)
+
+    enriched_tasks = []
+    for pt_doc in player_tasks_list:
+        player_task = PlayerTask(**pt_doc) # player_task.task_id is the TaskDefinition.task_id (UUID)
+        
+        task_def = await db_provider.task_definitions_collection.find_one({"task_id": player_task.task_id})
+        if task_def:
+            enriched_tasks.append({
+                "player_task_id": player_task.player_task_id, # Custom UUID of the PlayerTask instance
+                "task_definition_id": player_task.task_id, # Custom UUID of the TaskDefinition
+                "title": task_def.get("title", "N/A"),
+                "description": task_def.get("description", ""),
+                "status": player_task.status,
+                "progress": player_task.progress.dict() if player_task.progress else {}, # Convert progress model to dict
+                "rewards": task_def.get("rewards", {}) # From TaskDefinition
+            })
+        else:
+            # Handle case where task definition is not found for an accepted player task
+            enriched_tasks.append({
+                "player_task_id": player_task.player_task_id,
+                "task_definition_id": player_task.task_id,
+                "title": "任務定義未找到",
+                "description": "相關任務定義已不存在。",
+                "status": player_task.status,
+                "progress": player_task.progress.dict() if player_task.progress else {},
+                "rewards": {}
+            })
+            
     return {"status": "success", "msg": "獲取任務列表成功", "tasks": user_tasks}
 
 @router.get("/achievements", response_model=Dict[str, Any])
