@@ -1,339 +1,312 @@
 import os
-import asyncio 
-import time 
-from motor.motor_asyncio import AsyncIOMotorClient 
-from pymongo import ASCENDING 
-from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
+import time
+from pymongo import MongoClient, ASCENDING
+from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError # Removed DuplicateKeyError
 
+# 從環境變量獲取MongoDB連接URL和資料庫名稱
 DATABASE_URL = os.getenv("DATABASE_URL", "mongodb://Volticar:REMOVED_PASSWORD@59.126.6.46:27017/?authSource=admin&ssl=false")
 VOLTICAR_DB = os.getenv("VOLTICAR_DB", "Volticar")
 CHARGE_STATION_DB = os.getenv("CHARGE_STATION_DB", "charge_station")
 
+# 創建MongoDB客戶端和數據庫連接 - 添加重試機制
 max_retries = 3
 retry_delay = 3  # 秒
 
 print(f"正在連接MongoDB: {DATABASE_URL.split('@')[-1]}")
 
-client: AsyncIOMotorClient = None 
-
-async def connect_to_mongo():
-    global client
-    for retry in range(max_retries):
-        try:
-            client = AsyncIOMotorClient(DATABASE_URL, serverSelectionTimeoutMS=5000)
-            await client.admin.command('ping')
-            server_info = await client.server_info()
-            print(f"MongoDB連接成功! 伺服器版本: {server_info['version']}")
-            return client 
-        except (ConnectionFailure, ServerSelectionTimeoutError) as e:
-            if retry < max_retries - 1:
-                print(f"MongoDB連接失敗，嘗試 {retry + 1}/{max_retries}，等待 {retry_delay} 秒後重試... 錯誤: {str(e)}")
-                await asyncio.sleep(retry_delay) 
-            else:
-                print(f"MongoDB連接失敗，達到最大重試次數 ({max_retries})。錯誤: {str(e)}")
-                print("繼續執行，但資料庫功能將不可用...")
-                client = None 
-                return None 
-        except Exception as e: 
-            print(f"連接 MongoDB 時發生未預期錯誤: {e}")
-            client = None
-            return None
-    return None 
-
-async def safely_create_index(collection, field_name, unique=False, ascending=True):
+# 重試連接邏輯
+for retry in range(max_retries):
     try:
-        existing_indexes = await collection.index_information() 
+        # 最簡單的連接方式，不使用SSL/TLS
+        client = MongoClient(DATABASE_URL, serverSelectionTimeoutMS=5000)
+        
+        # 執行簡單的ping命令檢查連接
+        client.admin.command('ping')
+        print(f"MongoDB連接成功! 伺服器版本: {client.server_info()['version']}")
+        break
+    except (ConnectionFailure, ServerSelectionTimeoutError) as e:
+        if retry < max_retries - 1:
+            print(f"MongoDB連接失敗，嘗試 {retry + 1}/{max_retries}，等待 {retry_delay} 秒後重試... 錯誤: {str(e)}")
+            time.sleep(retry_delay)
+        else:
+            print(f"MongoDB連接失敗，達到最大重試次數 ({max_retries})。錯誤: {str(e)}")
+            print("繼續執行，但資料庫功能將不可用...")
+            # 使用空的客戶端，讓程序能夠啟動但資料庫功能不可用
+            client = None
+
+# 安全地創建索引的輔助函數
+def safely_create_index(collection, field_name, unique=False, ascending=True):
+    try:
+        # 檢查索引是否已存在
+        existing_indexes = collection.index_information()
         index_name = f"{field_name}_1" if ascending else f"{field_name}_-1"
         
         if index_name in existing_indexes:
             print(f"  索引 {index_name} 已存在，跳過創建")
             return
         
+        # 創建索引，如果是唯一索引，添加sparse=True避免null值問題
         direction = ASCENDING if ascending else -1
         if unique:
-            await collection.create_index([(field_name, direction)], unique=True, sparse=True) 
+            collection.create_index([(field_name, direction)], unique=True, sparse=True)
             print(f"  創建唯一索引(sparse): {index_name}")
         else:
-            await collection.create_index([(field_name, direction)]) 
+            collection.create_index([(field_name, direction)])
             print(f"  創建索引: {index_name}")
     except Exception as e:
         print(f"  創建索引 {field_name} 時出錯: {str(e)}")
 
-async def handle_null_duplicates(collection, field_name): 
+# 處理可能存在的重複null值問題，特別處理google_id
+def handle_null_duplicates(collection, field_name):
     try:
-        null_count = await collection.count_documents({field_name: None}) 
+        # 計算指定字段為null的文檔數量
+        null_count = collection.count_documents({field_name: None})
         
         if null_count > 1:
             print(f"  發現 {null_count} 個 {field_name} 為null的文檔，開始處理...")
-            null_docs_cursor = collection.find({field_name: None}) 
-            null_docs = await null_docs_cursor.to_list(length=null_count) 
             
+            # 取得所有字段為null的文檔
+            null_docs = list(collection.find({field_name: None}))
+            
+            # 保留第一個文檔，為其餘文檔設置默認值以避免重複
             for i, doc in enumerate(null_docs[1:], 1):
-                await collection.update_one( 
+                # 更新文檔，將字段設置為特殊值或刪除該字段
+                collection.update_one(
                     {"_id": doc["_id"]},
-                    {"$unset": {field_name: ""}}  
+                    {"$unset": {field_name: ""}}  # 完全移除該字段
                 )
+                
             print(f"  成功處理 {len(null_docs) - 1} 個 {field_name} 為null的文檔")
     except Exception as e:
         print(f"  處理 {field_name} 的null值時出錯: {str(e)}")
 
-async def migrate_login_type_field(collection): 
+# 遷移登入類型欄位的函數，為現有用戶添加login_type
+def migrate_login_type_field(collection):
     try:
-        missing_login_type = await collection.count_documents({"login_type": {"$exists": False}}) 
+        # 檢查有多少文檔沒有login_type欄位
+        missing_login_type = collection.count_documents({"login_type": {"$exists": False}})
         
         if missing_login_type > 0:
             print(f"  發現 {missing_login_type} 個文檔沒有login_type欄位，開始遷移...")
-            await collection.update_many( 
+            
+            # 更新所有沒有login_type的文檔，判斷登入類型
+            # 如果有google_id且不等於user_id，設為'google'，否則設為'normal'
+            collection.update_many(
                 {
                     "login_type": {"$exists": False},
                     "google_id": {"$exists": True},
-                    "$expr": {"$ne": ["$google_id", "$user_id"]}  
+                    "$expr": {"$ne": ["$google_id", "$user_id"]}  # google_id不等於user_id時
                 },
                 {"$set": {"login_type": "google"}}
             )
-            await collection.update_many( 
+            
+            # 其他所有用戶設為normal類型，並將google_id設為user_id
+            collection.update_many(
                 {"login_type": {"$exists": False}},
                 {"$set": {"login_type": "normal"}}
             )
-            remaining = await collection.count_documents({"login_type": {"$exists": False}}) 
+            
+            # 檢查更新後還有多少文檔沒有login_type
+            remaining = collection.count_documents({"login_type": {"$exists": False}})
             print(f"  ✓ 已為 {missing_login_type - remaining} 個文檔添加login_type欄位")
         
-        missing_google_id = await collection.count_documents({"google_id": {"$exists": False}}) 
+        # 檢查有多少文檔沒有google_id欄位
+        missing_google_id = collection.count_documents({"google_id": {"$exists": False}})
         if missing_google_id > 0:
             print(f"  發現 {missing_google_id} 個文檔沒有google_id欄位，開始添加...")
-            await collection.update_many( 
+            
+            # 先創建欄位
+            collection.update_many(
                 {"google_id": {"$exists": False}},
                 {"$set": {"google_id": ""}}
             )
-            update_result_none = await collection.update_many( 
+
+            # 對於一般用戶，將空的 google_id 設為 None
+            update_result_none = collection.update_many(
                 {"google_id": "", "login_type": "normal"},
-                {"$set": {"google_id": None}} 
+                {"$set": {"google_id": None}} # 將 google_id 設為 None
             )
             print(f"  ✓ 已將 {update_result_none.modified_count} 個一般用戶的空 google_id 設為 None")
-            remaining = await collection.count_documents({"google_id": {"$exists": False}}) 
+
+            remaining = collection.count_documents({"google_id": {"$exists": False}})
             print(f"  ✓ 已為 {missing_google_id - remaining} 個文檔添加 google_id 欄位")
-            old_logic_users = await collection.count_documents({ 
+
+            # 檢查並處理 login_type 為 normal 但 google_id 等於 user_id 的舊數據
+            old_logic_users = collection.count_documents({
                 "login_type": "normal",
                 "$expr": {"$eq": ["$google_id", "$user_id"]}
             })
             if old_logic_users > 0:
                 print(f"  發現 {old_logic_users} 個一般用戶的 google_id 等於 user_id (舊邏輯)，開始修正...")
-                fix_result = await collection.update_many( 
+                fix_result = collection.update_many(
                     {
                         "login_type": "normal",
                         "$expr": {"$eq": ["$google_id", "$user_id"]}
                     },
-                    {"$set": {"google_id": None}} 
+                    {"$set": {"google_id": None}} # 將 google_id 設為 None
                 )
                 print(f"  ✓ 已修正 {fix_result.modified_count} 個一般用戶的 google_id")
-            empty_google_id = await collection.count_documents({"google_id": ""}) 
+
+            # 檢查仍然是空字符串的 google_id (可能 login_type 不是 normal)
+            # 這些可能是異常數據，暫時也設為 None
+            empty_google_id = collection.count_documents({"google_id": ""})
             if empty_google_id > 0:
-                 fix_empty_result = await collection.update_many( 
+                 fix_empty_result = collection.update_many(
                      {"google_id": ""},
                      {"$set": {"google_id": None}}
                  )
                  print(f"  ✓ 已將 {fix_empty_result.modified_count} 個剩餘的空 google_id 設為 None")
+                
     except Exception as e:
         print(f"  遷移login_type欄位時出錯: {str(e)}")
 
-volticar_db = None
-charge_station_db = None
-users_collection = None
-login_records_collection = None
-# vehicles_collection = None # This was ambiguous, replaced by player_owned_vehicles_collection
-# tasks_collection = None # This was ambiguous, replaced by task_definitions_collection
-achievements_collection = None
-rewards_collection = None
-pending_verifications_collection = None
-
-player_tasks_collection = None
-vehicle_definitions_collection = None # Corrected spelling from previous state
-player_owned_vehicles_collection = None 
-item_definitions_collection = None
-player_warehouse_items_collection = None
-destinations_collection = None
-game_sessions_collection = None
-task_definitions_collection = None # Added for clarity, points to "TaskDefinitions"
-
-async def initialize_db_and_collections():
-    global client, volticar_db, charge_station_db, users_collection, login_records_collection
-    # global vehicles_collection, tasks_collection, # Removed old ambiguous ones
-    global achievements_collection, rewards_collection, pending_verifications_collection
-    global player_tasks_collection, vehicle_definitions_collection, player_owned_vehicles_collection
-    global item_definitions_collection, player_warehouse_items_collection, destinations_collection
-    global game_sessions_collection, task_definitions_collection
-
-    if client is None: 
-        print("MongoDB client is not connected. Aborting initialization.")
-        return
-
+# 如果連接成功，設置數據庫和集合
+if client is not None:
     try:
+        # 獲取數據庫
         volticar_db = client[VOLTICAR_DB]
         charge_station_db = client[CHARGE_STATION_DB]
         
+        # 獲取集合
         users_collection = volticar_db["Users"]
         login_records_collection = volticar_db["LoginRecords"]
-        
-        # Explicitly define collections based on new Pydantic models and mock data script
-        task_definitions_collection = volticar_db["TaskDefinitions"] # Points to "TaskDefinitions"
-        vehicle_definitions_collection = volticar_db["VehicleDefinitions"]
-        item_definitions_collection = volticar_db["ItemDefinitions"]
-        destinations_collection = volticar_db["Destinations"]
-        
-        player_owned_vehicles_collection = volticar_db["Vehicles"] # Assuming "Vehicles" stores player owned instances
-        
+        # otp_records_collection = volticar_db["OTPRecords"] # Removed OTP collection
+        # stations_collection = charge_station_db["Stations"] # Removed unused stations_collection
+        vehicles_collection = volticar_db["Vehicles"]
+        tasks_collection = volticar_db["Tasks"]
         achievements_collection = volticar_db["Achievements"]
         rewards_collection = volticar_db["Rewards"]
-        pending_verifications_collection = volticar_db["PendingVerifications"]
-
-        player_tasks_collection = volticar_db["PlayerTasks"]
-        player_warehouse_items_collection = volticar_db["PlayerWarehouseItems"]
-        game_sessions_collection = volticar_db["GameSessions"]
+        pending_verifications_collection = volticar_db["PendingVerifications"] # 新增：待驗證集合
         
-        print("所有集合引用已初始化。")
-
-        print("開始遷移login_type欄位 (Users)...")
-        await migrate_login_type_field(users_collection)
+        # 遷移login_type欄位
+        print("開始遷移login_type欄位...")
+        migrate_login_type_field(users_collection)
         
+        # 先處理可能存在的null值重複問題
         print("檢查並處理可能的null值重複問題...")
-        await handle_null_duplicates(users_collection, "phone")
+        handle_null_duplicates(users_collection, "phone")
         
+        # 使用安全的索引創建方法
         print("正在檢查並創建所需的MongoDB索引...")
         
+        # 用戶集合索引
         print("用戶集合索引:")
-        await safely_create_index(users_collection, "user_id", unique=True)
-        await safely_create_index(users_collection, "email", unique=True)
-        # ... (other index creations remain the same) ...
-        await safely_create_index(users_collection, "username", unique=True)
-        await safely_create_index(users_collection, "google_id", unique=True)
-        await safely_create_index(users_collection, "login_type")
+        safely_create_index(users_collection, "user_id", unique=True)
+        safely_create_index(users_collection, "email", unique=True)
+        safely_create_index(users_collection, "username", unique=True)
+        # Phone index creation removed as it's handled manually or differently
+        safely_create_index(users_collection, "google_id", unique=True)
+        safely_create_index(users_collection, "login_type")
 
+        # 登入記錄索引
         print("登入記錄索引:")
-        await safely_create_index(login_records_collection, "user_id") # This should refer to User.user_id
-        await safely_create_index(login_records_collection, "login_record_id", unique=True) # Index for the new custom ID
-        await safely_create_index(login_records_collection, "login_timestamp")
+        safely_create_index(login_records_collection, "user_id")
+        safely_create_index(login_records_collection, "login_timestamp")
 
-        # player_owned_vehicles_collection (points to "Vehicles")
-        print("玩家擁有車輛 (Vehicles) 集合索引:")
-        # Assuming player_vehicle_id is the custom UUID for PlayerOwnedVehicle instances
-        await safely_create_index(player_owned_vehicles_collection, "player_vehicle_id", unique=True) 
-        await safely_create_index(player_owned_vehicles_collection, "player_id") # Refers to User.user_id
+        # OTP記錄索引 (Removed)
+        # print("OTP記錄索引:")
+        # safely_create_index(otp_records_collection, "user_id")
+        # safely_create_index(otp_records_collection, "expires_at")
 
-        # task_definitions_collection (points to "TaskDefinitions")
-        print("任務定義 (TaskDefinitions) 集合索引:")
-        await safely_create_index(task_definitions_collection, "task_id", unique=True) 
-        await safely_create_index(task_definitions_collection, "type")
-        await safely_create_index(task_definitions_collection, "is_active")
+        # 車輛索引
+        print("車輛索引:")
+        safely_create_index(vehicles_collection, "vehicle_id", unique=True)
+        safely_create_index(vehicles_collection, "user_id")
         
-        print("成就 (Achievements) 集合索引:")
-        await safely_create_index(achievements_collection, "achievement_id", unique=True)
+        # 任務索引
+        print("任務索引:")
+        safely_create_index(tasks_collection, "task_id", unique=True)
         
-        # Rewards collection might need an update if it refers to item_id (custom UUID)
+        # 成就索引
+        print("成就索引:")
+        safely_create_index(achievements_collection, "achievement_id", unique=True)
+        
+        # 獎勵索引
         print("獎勵索引:")
-        # await safely_create_index(rewards_collection, "item_id", unique=True) # If rewards have a main item_id
-        
+        safely_create_index(rewards_collection, "item_id", unique=True)
+
+        # 待驗證集合索引
         print("待驗證集合索引:")
-        await safely_create_index(pending_verifications_collection, "email")
-        await safely_create_index(pending_verifications_collection, "token", unique=True)
+        safely_create_index(pending_verifications_collection, "email") # 方便查詢 Email
+        safely_create_index(pending_verifications_collection, "token", unique=True) # Token 必須唯一
+        # 可以考慮為 expires_at 創建 TTL 索引，自動刪除過期未驗證的記錄
+        # pending_verifications_collection.create_index("expires_at", expireAfterSeconds=0)
+        # print("  創建 TTL 索引: expires_at")
         
         print("MongoDB索引檢查完成!")
 
     except Exception as e:
         print(f"設置數據庫、集合或執行索引/遷移時發生錯誤: {e}")
-        # Reset all to None
-        volticar_db = charge_station_db = users_collection = login_records_collection = None
-        achievements_collection = rewards_collection = pending_verifications_collection = None
-        player_tasks_collection = vehicle_definitions_collection = player_owned_vehicles_collection = None
-        item_definitions_collection = player_warehouse_items_collection = destinations_collection = None
-        game_sessions_collection = task_definitions_collection = None
-        pass
+        # 僅記錄錯誤，不再將集合設為 None，讓應用程式嘗試繼續運行
+        # 如果出現錯誤，創建空對象以免引發屬性錯誤
+        # volticar_db = None # 不再設為 None
+        # charge_station_db = None # 不再設為 None
+        # users_collection = None # 不再設為 None
+        # login_records_collection = None # 不再設為 None
+        # vehicles_collection = None # 不再設為 None
+        # tasks_collection = None # 不再設為 None
+        # achievements_collection = None # 不再設為 None
+        # rewards_collection = None # 不再設為 None
+        # pending_verifications_collection = None # 不再設為 None
+        # 注意：如果獲取 volticar_db 或 charge_station_db 本身失敗，
+        # 後續的集合賦值會自然失敗，但這裡假設主要錯誤發生在索引/遷移階段。
+        # 如果需要更細緻的處理，可以將集合賦值移到 try 區塊的更前面。
+        # 確保 tasks_collection 等變數在 try 區塊外有預設值 (雖然下方 else 區塊已處理)
+        pass # 僅記錄錯誤，繼續執行
 
+else:
+    # 連接失敗時，創建空對象以免引發屬性錯誤
+    volticar_db = None
+    charge_station_db = None
+    users_collection = None
+    login_records_collection = None
+    # otp_records_collection = None # Removed
+    # stations_collection = None # Removed
+    vehicles_collection = None
+    tasks_collection = None
+    achievements_collection = None
+    rewards_collection = None
+    pending_verifications_collection = None # 新增
+
+    print("警告: 無法連接到MongoDB，API將在無數據庫模式下運行")
+
+# 確保即使在 try-except 中出錯，這些變數也有定義 (雖然理論上應該在 try 中賦值)
+# 但為了防止 UnboundLocalError，如果它們在 try 中賦值失敗且 except 中未處理，
+# 在這裡給它們一個預設值 None (雖然這與上面的修改目標有些矛盾，但更安全)
+# 更好的做法是確保 try 區塊能處理集合賦值本身的錯誤
+if 'volticar_db' not in locals(): volticar_db = None
+if 'charge_station_db' not in locals(): charge_station_db = None
+if 'users_collection' not in locals(): users_collection = None
+if 'login_records_collection' not in locals(): login_records_collection = None
+if 'vehicles_collection' not in locals(): vehicles_collection = None
+if 'tasks_collection' not in locals(): tasks_collection = None
+if 'achievements_collection' not in locals(): achievements_collection = None
+if 'rewards_collection' not in locals(): rewards_collection = None
+if 'pending_verifications_collection' not in locals(): pending_verifications_collection = None
+
+# 打印連接信息以便調試
+if volticar_db is not None:
+    print(f"已連接到數據庫: {VOLTICAR_DB}")
+    print(f"可用的集合: {', '.join(volticar_db.list_collection_names())}")
+if charge_station_db is not None:
     try:
-        print("為新遊戲集合創建索引...")
-        print("玩家任務 (PlayerTasks) 集合索引:")
-        await safely_create_index(player_tasks_collection, "player_task_id", unique=True)
-        await safely_create_index(player_tasks_collection, "player_id") 
-        await safely_create_index(player_tasks_collection, "task_id") 
-        await safely_create_index(player_tasks_collection, "status") 
-        await safely_create_index(player_tasks_collection, "linked_game_session_id") 
-
-        print("車輛定義 (VehicleDefinitions) 集合索引:")
-        await safely_create_index(vehicle_definitions_collection, "vehicle_id", unique=True) 
-        await safely_create_index(vehicle_definitions_collection, "type")
-
-        print("物品定義 (ItemDefinitions) 集合索引:")
-        await safely_create_index(item_definitions_collection, "item_id", unique=True) 
-        await safely_create_index(item_definitions_collection, "category")
-
-        print("玩家倉庫 (PlayerWarehouseItems) 集合索引:")
-        await player_warehouse_items_collection.create_index([("player_id", ASCENDING), ("item_id", ASCENDING)], unique=True)
-        print("  創建唯一複合索引: player_id_1_item_id_1")
-        await safely_create_index(player_warehouse_items_collection, "player_warehouse_item_id", unique=True)
-
-
-        print("目的地 (Destinations) 集合索引:")
-        await safely_create_index(destinations_collection, "destination_id", unique=True) 
-        await safely_create_index(destinations_collection, "region")
-        await destinations_collection.create_index([("coordinates", "2dsphere")])
-        print("  創建地理空間索引: coordinates_2dsphere")
-
-        print("遊戲會話 (GameSessions) 集合索引:")
-        await safely_create_index(game_sessions_collection, "game_session_id", unique=True) 
-        await safely_create_index(game_sessions_collection, "player_id") 
-        await safely_create_index(game_sessions_collection, "status") 
-        
-        print("新遊戲集合索引創建完成!")
+        cities = charge_station_db.list_collection_names()
+        print(f"充電站數據庫中可用的城市: {', '.join(cities)}")
     except Exception as e:
-        print(f"為新遊戲集合創建索引時發生錯誤: {e}")
-        pass
+        print(f"無法獲取充電站集合列表: {str(e)}")
 
-async def print_connection_info():
-    if volticar_db is not None:
-        print(f"已連接到數據庫: {VOLTICAR_DB}")
-        collections = await volticar_db.list_collection_names() 
-        print(f"可用的集合: {', '.join(collections)}")
-    if charge_station_db is not None:
-        try:
-            cities = await charge_station_db.list_collection_names() 
-            print(f"充電站數據庫中可用的城市: {', '.join(cities)}")
-        except Exception as e:
-            print(f"無法獲取充電站集合列表: {str(e)}")
-
-async def get_charge_station_collection(city=None): 
-    if charge_station_db is None: 
-        print("Charge station DB not initialized.")
-        return [] if not city else None
+# 由於charge_station是一個獨立的數據庫，我們需要基於城市名獲取對應的集合
+def get_charge_station_collection(city=None):
+    """
+    獲取充電站集合。如果指定了城市，返回該城市的集合；否則返回所有集合
+    """
     try:
         if city:
-            return charge_station_db[city] 
+            return charge_station_db[city]
         else:
-            return await charge_station_db.list_collection_names() 
+            # 獲取所有集合名
+            return charge_station_db.list_collection_names()
     except Exception as e:
         print(f"獲取充電站集合失敗: {str(e)}")
+        # 返回空數組或空集合，避免應用崩潰
         return [] if not city else None
-
-async def connect_and_initialize_db():
-    global client
-    client = await connect_to_mongo()
-    if client:
-        await initialize_db_and_collections()
-        await print_connection_info() 
-    else:
-        global volticar_db, charge_station_db, users_collection, login_records_collection
-        global achievements_collection, rewards_collection, pending_verifications_collection
-        global player_tasks_collection, vehicle_definitions_collection, player_owned_vehicles_collection
-        global item_definitions_collection, player_warehouse_items_collection, destinations_collection
-        global game_sessions_collection, task_definitions_collection
-
-        volticar_db = charge_station_db = users_collection = login_records_collection = None
-        achievements_collection = rewards_collection = pending_verifications_collection = None
-        player_tasks_collection = vehicle_definitions_collection = player_owned_vehicles_collection = None
-        item_definitions_collection = player_warehouse_items_collection = destinations_collection = None
-        game_sessions_collection = task_definitions_collection = None
-        print("警告: 無法連接到MongoDB，API將在無數據庫模式下運行")
-
-async def close_mongo_connection():
-    global client
-    if client:
-        client.close()
-        print("MongoDB 連線已關閉")
