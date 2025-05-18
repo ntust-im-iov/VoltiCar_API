@@ -5,8 +5,7 @@ from bson import ObjectId # Import ObjectId
 from pydantic import BaseModel # Added BaseModel
 
 # Removed Achievement import
-# from app.database.mongodb import volticar_db # Remove direct import of db
-from app.database import mongodb as db_provider # Import the module itself
+from app.database.mongodb import volticar_db
 
 router = APIRouter(prefix="/achievements", tags=["成就系統"])
 
@@ -16,18 +15,15 @@ class AchievementUpdate(BaseModel):
     achievement_id: str
     progress: int
 
-# 初始化集合 - These will be accessed via db_provider inside functions
-# achievements_collection = volticar_db["Achievements"]
-# users_collection = volticar_db["Users"]
+# 初始化集合
+achievements_collection = volticar_db["Achievements"]
+users_collection = volticar_db["Users"]
 
 # 獲取用戶的成就列表
 @router.get("/", response_model=Dict[str, Any])
 async def get_achievements(user_uuid: str):
-    if db_provider.users_collection is None or db_provider.achievements_collection is None:
-        raise HTTPException(status_code=503, detail="成就或用戶資料庫服務未初始化")
-
     # 檢查用戶是否存在
-    user = await db_provider.users_collection.find_one({"user_uuid": user_uuid}) # await
+    user = users_collection.find_one({"user_uuid": user_uuid})
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -35,8 +31,7 @@ async def get_achievements(user_uuid: str):
         )
     
     # 獲取所有成就
-    all_achievements_cursor = db_provider.achievements_collection.find({}) # find returns a cursor
-    all_achievements = await all_achievements_cursor.to_list(length=None) # await and to_list
+    all_achievements = list(achievements_collection.find({}))
     user_achievements = []
     
     for achievement in all_achievements:
@@ -79,11 +74,8 @@ async def update_achievement(
     # 參數直接從 Form 獲取
     achievement_id_str = achievement_id # Rename to avoid conflict with ObjectId
 
-    if db_provider.users_collection is None or db_provider.achievements_collection is None:
-        raise HTTPException(status_code=503, detail="成就或用戶資料庫服務未初始化")
-
     # 檢查用戶是否存在
-    user = await db_provider.users_collection.find_one({"user_uuid": user_uuid}) # await
+    user = users_collection.find_one({"user_uuid": user_uuid})
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -93,7 +85,7 @@ async def update_achievement(
     # 檢查成就是否存在 (使用 ObjectId)
     try:
         achievement_oid = ObjectId(achievement_id_str)
-        achievement = await db_provider.achievements_collection.find_one({"_id": achievement_oid}) # await
+        achievement = achievements_collection.find_one({"_id": achievement_oid})
     except Exception: # Handles invalid ObjectId format
         achievement = None
 
@@ -111,7 +103,7 @@ async def update_achievement(
 
     # 更新用戶的成就進度 (使用 achievement_id_str 作為 key)
     user_achievement_key = f"achievements.{achievement_id_str}"
-    await db_provider.users_collection.update_one( # await
+    users_collection.update_one(
         {"user_uuid": user_uuid},
         {"$set": {
             f"{user_achievement_key}.progress": progress,
@@ -128,7 +120,7 @@ async def update_achievement(
     ):
         reward = achievement.get("reward", {})
         if "carbon_credits" in reward:
-            await db_provider.users_collection.update_one( # await
+            users_collection.update_one(
                 {"user_uuid": user_uuid},
                 {"$inc": {"carbon_credits": reward["carbon_credits"]}}
             )
