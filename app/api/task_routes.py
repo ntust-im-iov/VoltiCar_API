@@ -1,198 +1,163 @@
-from fastapi import APIRouter, HTTPException, status, Depends, Body, Path
-from typing import List, Optional, Any, Dict
+from fastapi import APIRouter, HTTPException, status, Form # Added Form
+from typing import Dict, Any # Added Any back
 from datetime import datetime
-# from bson import ObjectId # ObjectId might not be needed directly in routes if using custom IDs
+from bson import ObjectId # Import ObjectId if task_id is expected to be an ObjectId string
 
-from app.models.user import User
-from app.models.game_models import TaskDefinition, PlayerTask, BaseModel # BaseModel for AcceptTaskRequest
-from app.database import mongodb as db_provider # Renamed for clarity
-from app.utils.auth import get_current_user
-import uuid # For validating UUIDs if needed
+# Removed Task import from app.models.user
+from app.database.mongodb import volticar_db
 
-task_definition_router = APIRouter(prefix="/tasks", tags=["任務定義 (Game Tasks Definitions)"])
-player_task_router = APIRouter(prefix="/player/tasks", tags=["玩家任務 (Player Tasks)"])
+router = APIRouter(prefix="/tasks", tags=["任務"])
 
-# --- 任務定義相關 API ---
+# 初始化集合
+tasks_collection = volticar_db["Tasks"]
+users_collection = volticar_db["Users"]
 
-@task_definition_router.get("/", response_model=List[TaskDefinition])
-async def list_available_tasks(
-    type: Optional[str] = None,
-):
+# 獲取每日任務
+@router.get("/daily", response_model=Dict[str, Any])
+async def get_daily_tasks(user_id: str):
     """
-    獲取當前可供選擇的任務列表。
+    獲取用戶當日可完成的任務
+    - user_id: 用戶ID
     """
-    if db_provider.task_definitions_collection is None: 
-        raise HTTPException(status_code=503, detail="任務定義資料庫服務未初始化")
-
-    query: Dict[str, Any] = {"is_active": True}
-    if type:
-        query["type"] = type
-    
-    now = datetime.now()
-    query["$or"] = [
-        {"availability_start_date": {"$lte": now}, "availability_end_date": {"$gte": now}},
-        {"availability_start_date": {"$lte": now}, "availability_end_date": None},
-        {"availability_start_date": None, "availability_end_date": {"$gte": now}},
-        {"availability_start_date": None, "availability_end_date": None}
-    ]
-
-    tasks_cursor = db_provider.task_definitions_collection.find(query)
-    tasks_list = await tasks_cursor.to_list(length=None)
-    
-    return [TaskDefinition(**task) for task in tasks_list]
-
-# --- 玩家任務相關 API ---
-
-class AcceptTaskRequest(BaseModel):
-    task_id: str # This is TaskDefinition.task_id (UUID string)
-
-@player_task_router.post("/", response_model=PlayerTask, status_code=status.HTTP_201_CREATED)
-async def accept_task(
-    request_body: AcceptTaskRequest = Body(...),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    允許玩家接受一個任務。
-    """
-    if db_provider.task_definitions_collection is None or \
-       db_provider.player_tasks_collection is None:
-        raise HTTPException(status_code=503, detail="資料庫服務未初始化")
-
-    task_definition_uuid_to_accept = request_body.task_id
-
-    task_def_doc = await db_provider.task_definitions_collection.find_one({
-        "task_id": task_definition_uuid_to_accept, 
-        "is_active": True
-    })
-    if not task_def_doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任務不存在或不可用")
-    
-    task_def_model = TaskDefinition(**task_def_doc)
-
-    now = datetime.now()
-    if (task_def_model.availability_start_date and task_def_model.availability_start_date > now) or \
-       (task_def_model.availability_end_date and task_def_model.availability_end_date < now):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="任務不在可用時間範圍內")
-
-    if current_user.level < task_def_model.requirements.required_player_level:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"需要等級 {task_def_model.requirements.required_player_level} 才能接受此任務")
-
-    existing_player_task = await db_provider.player_tasks_collection.find_one({
-        "user_id": current_user.user_id, # Changed from player_id
-        "task_id": task_definition_uuid_to_accept, 
-        "status": {"$in": ["accepted", "in_progress_linked_to_session"]}
-    })
-    if existing_player_task:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="任務已被接受且未完成")
-
-    if not task_def_model.is_repeatable:
-        completed_task = await db_provider.player_tasks_collection.find_one({
-            "user_id": current_user.user_id, # Changed from player_id
-            "task_id": task_definition_uuid_to_accept,
-            "status": "completed"
-        })
-        if completed_task:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="此任務不可重複且已完成")
-
-    # Check for an existing "abandoned" task for this user and task_definition to reuse
-    abandoned_task_to_reuse = await db_provider.player_tasks_collection.find_one({
-        "user_id": current_user.user_id,
-        "task_id": task_definition_uuid_to_accept,
-        "status": "abandoned"
-    })
-
-    if abandoned_task_to_reuse:
-        # If an abandoned task exists, reuse it by updating its status and relevant fields.
-        # This applies to both repeatable and non-repeatable (if not yet completed).
-        update_fields = {
-            "status": "accepted",
-            "accepted_at": datetime.now(),
-            "last_updated_at": datetime.now(),
-            "progress": {},  # Reset progress
-            "linked_game_session_id": None,
-            "completed_at": None,
-            "failed_at": None
-            # "abandoned_at": None # Removed from $set to avoid conflict with $unset
-        }
-        await db_provider.player_tasks_collection.update_one(
-            {"_id": abandoned_task_to_reuse["_id"]},
-            {"$set": update_fields, "$unset": {"abandoned_at": ""}} # $unset will remove the field
+    # 檢查用戶是否存在
+    user = users_collection.find_one({"user_id": user_id})
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用戶不存在"
         )
-        reused_task_doc = await db_provider.player_tasks_collection.find_one({"_id": abandoned_task_to_reuse["_id"]})
-        if not reused_task_doc: # Should not happen
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="重用已放棄任務時出錯")
-        return PlayerTask(**reused_task_doc)
     
-    # If no abandoned task to reuse (or if specific logic prevented reuse), create a new PlayerTask record.
-    new_player_task_instance = PlayerTask(
-        user_id=current_user.user_id, 
-        task_id=task_definition_uuid_to_accept, 
-        status="accepted",
-        accepted_at=datetime.now(),
-        last_updated_at=datetime.now(),
-        progress={} 
-    )
-    new_player_task_data = new_player_task_instance.dict(by_alias=True, exclude_none=True)
+    # 獲取今日的任務
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    daily_tasks = list(tasks_collection.find({
+        "type": "daily",
+        "available_from": {"$lte": datetime.now()},
+        "available_to": {"$gte": datetime.now()}
+    }))
     
-    insert_result = await db_provider.player_tasks_collection.insert_one(new_player_task_data)
-    created_task_doc = await db_provider.player_tasks_collection.find_one({"_id": insert_result.inserted_id})
-    
-    if not created_task_doc: 
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="接受新任務失敗，無法讀取已創建的記錄")
+    # 格式化任務
+    formatted_tasks = []
+    for task in daily_tasks:
+        # 查詢用戶的任務進度
+        progress = 0
+        if "tasks" in user and str(task["_id"]) in user["tasks"]:
+            progress = user["tasks"][str(task["_id"])].get("progress", 0)
         
-    return PlayerTask(**created_task_doc)
+        formatted_tasks.append({
+            "task_id": str(task["_id"]),
+            "description": task.get("description", ""),
+            "progress": progress,
+            "target": task.get("target", 100),
+            "reward": task.get("reward", {})
+        })
+    
+    return {
+        "status": "success",
+        "msg": "獲取每日任務成功",
+        "tasks": formatted_tasks
+    }
 
-
-@player_task_router.delete("/{player_task_uuid}", status_code=status.HTTP_200_OK) 
-async def abandon_task(
-    player_task_uuid: str = Path(..., description="要放棄的玩家任務的 player_task_id (UUID)"),
-    current_user: User = Depends(get_current_user)
+# 完成任務
+@router.post("/complete", response_model=Dict[str, Any])
+async def complete_task(
+    user_id: str = Form(..., description="用戶ID"),
+    task_id: str = Form(..., description="任務ID (ObjectId 字串)"),
+    progress: int = Form(..., description="當前進度值")
 ):
-    if db_provider.player_tasks_collection is None:
-        raise HTTPException(status_code=503, detail="資料庫服務未初始化")
+    """
+    更新任務完成進度 (使用表單欄位)
 
+    - **user_id**: 用戶ID
+    - **task_id**: 任務ID (ObjectId 字串)
+    - **progress**: 當前進度值
+    """
+    # 參數直接從 Form 獲取
+    # 檢查用戶是否存在
+    user = users_collection.find_one({"user_id": user_id})
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用戶不存在"
+        )
+    
+    # 檢查任務是否存在 (假設 task_id 是 ObjectId 字符串)
     try:
-        uuid.UUID(player_task_uuid)
-    except ValueError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="無效的玩家任務 ID 格式")
+        task = tasks_collection.find_one({"_id": ObjectId(task_id)})
+    except Exception: # Handle invalid ObjectId format
+        task = None
 
-    player_task_doc = await db_provider.player_tasks_collection.find_one({
-        "player_task_id": player_task_uuid,
-        "user_id": current_user.user_id # Changed from player_id
-    })
-
-    if not player_task_doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的玩家任務記錄")
-
-    if player_task_doc["status"] not in ["accepted", "in_progress_linked_to_session"]:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"任務狀態為 {player_task_doc['status']}，無法放棄")
+    if not task:
+        # Optionally, try finding by a 'task_id' field if it exists and is different from _id
+        # task = tasks_collection.find_one({"task_id": task_id})
+        # if not task:
+        raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="任務不存在"
+            )
     
-    update_result = await db_provider.player_tasks_collection.update_one(
-        {"player_task_id": player_task_uuid, "user_id": current_user.user_id}, # Changed from player_id
-        {"$set": {"status": "abandoned", "abandoned_at": datetime.now(), "last_updated_at": datetime.now()}}
+    # 獲取任務完成目標
+    target = task.get("target", 100)
+    
+    # 判斷任務是否已完成
+    completed = progress >= target
+    
+    # 更新用戶的任務進度
+    task_key = f"tasks.{str(task['_id'])}"
+    result = users_collection.update_one(
+        {"user_id": user_id},
+        {"$set": {
+            f"{task_key}.progress": progress,
+            f"{task_key}.completed": completed,
+            f"{task_key}.last_updated": datetime.now()
+        }}
     )
-
-    if update_result.modified_count == 0:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="放棄任務失敗 (可能已被修改或不存在)")
-
-    return {"message": "任務已成功放棄"}
-
-
-@player_task_router.get("/", response_model=List[PlayerTask])
-async def list_player_accepted_tasks(
-    status_filter: Optional[str] = None, 
-    current_user: User = Depends(get_current_user)
-):
-    if db_provider.player_tasks_collection is None:
-        raise HTTPException(status_code=503, detail="資料庫服務未初始化")
-
-    query: Dict[str, Any] = {"user_id": current_user.user_id} # Changed from player_id
-    if status_filter:
-        if status_filter not in ["accepted", "in_progress_linked_to_session", "completed", "failed", "abandoned"]:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="無效的狀態篩選器")
-        query["status"] = status_filter
     
-    player_tasks_cursor = db_provider.player_tasks_collection.find(query)
-    player_tasks_list = await player_tasks_cursor.to_list(length=None)
+    # 如果任務剛完成，給予獎勵
+    reward_given = False
+    if completed and (
+        "tasks" not in user or 
+        str(task["_id"]) not in user["tasks"] or 
+        not user["tasks"][str(task["_id"])].get("completed", False)
+    ):
+        reward = task.get("reward", {})
+        if "carbon_credits" in reward and reward["carbon_credits"] > 0:
+            users_collection.update_one(
+                {"user_id": user_id},
+                {"$inc": {"carbon_credits": reward["carbon_credits"]}}
+            )
+            reward_given = True
     
-    return [PlayerTask(**pt) for pt in player_tasks_list]
+    return {
+        "status": "success",
+        "msg": "任務進度更新成功",
+        "progress": progress,
+        "completed": completed,
+        "reward_given": reward_given
+    }
+
+# 獲取所有任務
+@router.get("/", response_model=Dict[str, Any])
+async def get_all_tasks():
+    """
+    獲取系統中所有可用的任務列表（管理用）
+    """
+    # 獲取所有任務
+    all_tasks = list(tasks_collection.find())
+    
+    # 格式化任務
+    formatted_tasks = []
+    for task in all_tasks:
+        formatted_tasks.append({
+            "task_id": str(task["_id"]),
+            "description": task.get("description", ""),
+            "type": task.get("type", "regular"),
+            "target": task.get("target", 100),
+            "reward": task.get("reward", {})
+        })
+    
+    return {
+        "status": "success",
+        "msg": "獲取所有任務成功",
+        "total": len(formatted_tasks),
+        "tasks": formatted_tasks
+    }
