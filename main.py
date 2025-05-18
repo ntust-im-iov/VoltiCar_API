@@ -1,6 +1,10 @@
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles # Added import
 from fastapi.responses import FileResponse, JSONResponse # Added FileResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+import redis.asyncio as aioredis # 匯入 aioredis
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import os
@@ -71,6 +75,12 @@ app = FastAPI(
     }
 )
 
+# 初始化 Limiter
+limiter = Limiter(key_func=get_remote_address, default_limits=["5/minute"]) # 預設限制，可依需求調整
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
 # 配置CORS
 app.add_middleware(
     CORSMiddleware,
@@ -105,10 +115,19 @@ async def root():
 @app.get("/health")
 async def health_check():
     # 檢查數據庫連接
-    from app.database.mongodb import client, volticar_db
+    # client 和 volticar_db 是在 app.database.mongodb 中定義並在啟動時初始化的全域變數
+    from app.database.mongodb import client, volticar_db 
     
     db_status = "正常" if client is not None and volticar_db is not None else "無法連接"
     
+    # 可以選擇性地執行一個快速的 ping 操作來確認連接仍然活躍
+    # if client:
+    #     try:
+    #         await client.admin.command('ping')
+    #         db_status = "正常 (Ping成功)"
+    #     except Exception:
+    #         db_status = "連接異常 (Ping失敗)"
+
     return {
         "status": "healthy", 
         "message": "API服務正常運行中",
@@ -142,15 +161,31 @@ async def root():
 # --- Catch-all route removed ---
 
 
+from app.database.mongodb import connect_and_initialize_db, close_mongo_connection # Import new async functions
+
 # 應用程式啟動事件處理
 @app.on_event("startup")
 async def startup_event_handler():
     """
     應用程式啟動事件。
     """
+    # 初始化 MongoDB
+    await connect_and_initialize_db() 
+
+    # 初始化 Redis 連線池
+    redis_host = os.getenv("REDIS_HOST", "localhost")
+    redis_port = int(os.getenv("REDIS_PORT", 6379))
+    try:
+        app.state.redis = await aioredis.from_url(f"redis://{redis_host}:{redis_port}", encoding="utf-8", decode_responses=True)
+        await app.state.redis.ping()
+        logger.info(f"✅ 已成功連接到 Redis 於 {redis_host}:{redis_port}")
+    except Exception as e:
+        logger.error(f"❌ 連接 Redis 失敗: {e}")
+        app.state.redis = None # 確保即使失敗也有定義
+
     host = os.getenv("API_HOST", "0.0.0.0")
     port = int(os.getenv("API_PORT", 22000))
-    logger.info(f"✅ Volticar API 已啟動於 https://{host}:{port}") # 改為寫入日誌
+    logger.info(f"✅ Volticar API 已啟動於 https://{host}:{port}")
     # 強制刷新日誌緩衝區，確保訊息立即寫入檔案
     for handler in logger.handlers:
         # FileHandler 也有 flush 方法
@@ -163,7 +198,15 @@ async def shutdown_event_handler():
     """
     應用程式關閉事件。
     """
-    logger.info("🛑 Volticar API 已關閉。") # 改為寫入日誌
+    # 關閉 MongoDB 連線
+    await close_mongo_connection() 
+
+    # 關閉 Redis 連線
+    if hasattr(app.state, 'redis') and app.state.redis:
+        await app.state.redis.close()
+        logger.info("🛑 Redis 連線已關閉。")
+    
+    logger.info("🛑 Volticar API 已關閉。")
     # 強制刷新日誌緩衝區，確保訊息立即寫入檔案
     for handler in logger.handlers:
         # FileHandler 也有 flush 方法

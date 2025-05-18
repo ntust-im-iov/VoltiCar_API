@@ -1,64 +1,117 @@
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Dict, Any
-from datetime import datetime # Changed import
+from datetime import datetime
+import uuid
 from bson import ObjectId
 
-# 用戶模型 (Users 集合) - 代表資料庫中的完整用戶文檔結構
+# --- PyObjectId Helper Type (Pydantic V1 compatible with schema modification) ---
+class PyObjectId(ObjectId):
+    @classmethod
+    def __get_validators__(cls):
+        yield cls.validate
+
+    @classmethod
+    def validate(cls, v): # Pydantic V1 signature
+        if isinstance(v, ObjectId):
+            return v
+        if ObjectId.is_valid(v):
+            return ObjectId(v)
+        try:
+            if isinstance(v, str) and ObjectId.is_valid(v):
+                return ObjectId(v)
+        except TypeError:
+            pass
+        raise ValueError(f"Not a valid ObjectId: {v}")
+
+    @classmethod
+    def __modify_schema__(cls, field_schema: Dict[str, Any]):
+        # Pydantic V1 method to modify the schema for this type
+        # We want ObjectId to be represented as a string in the OpenAPI schema
+        field_schema.update(type="string", example="60d5ec49e73e82f8e0e2f8b8")
+
+
+# --- Game Session Setup ---
+class CurrentGameSessionSetupItem(BaseModel):
+    item_id: str 
+    quantity: int
+    class Config:
+        from_attributes = True # Pydantic V1: orm_mode = True
+
+class CurrentGameSessionSetup(BaseModel):
+    selected_vehicle_id: Optional[str] = None
+    selected_cargo: Optional[List[CurrentGameSessionSetupItem]] = None
+    selected_destination_id: Optional[str] = None
+    last_updated_at: Optional[datetime] = None
+    class Config:
+        from_attributes = True
+
+# --- User Model ---
 class User(BaseModel):
-    id: Optional[str] = None  # MongoDB ObjectId (_id)
-    user_id: str  # 應用程式生成的唯一 ID
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    user_id: str = Field(default_factory=lambda: str(uuid.uuid4()), unique=True, description="Custom unique user ID (UUID string)")
     email: EmailStr
     username: str
     phone: Optional[str] = None
-    password_hash: Optional[str] = None # Google 登入用戶可能沒有密碼
+    hashed_password: Optional[str] = None
     google_id: Optional[str] = None
     login_type: str = "normal"
+    
+    experience_points: int = Field(default=0)
+    level: int = Field(default=1)
+    currency_balance: int = Field(default=0)
+    current_game_session_setup: Optional[CurrentGameSessionSetup] = None
+    active_game_session_id: Optional[str] = None
+
     reset_password_token: Optional[str] = None
     reset_password_token_expires_at: Optional[datetime] = None
+    last_login_at: Optional[datetime] = None
+
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
-    # 其他可能的用戶欄位，例如 fcm_token, achievements, tasks, friends, carbon_credits 等
-    # 這些可以在需要時添加到模型中，或者保持 User 模型只包含核心身份信息
-
-    model_config = {
-        "from_attributes": True, # 允許從 ORM 對象或其他屬性創建模型
-        "json_schema_extra": {
+    
+    class Config:
+        from_attributes = True
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {
+            ObjectId: lambda o: str(o), 
+            PyObjectId: lambda o: str(o) 
+        }
+        schema_extra = {
             "example": {
-                "user_id": "uuid-generated-id",
+                "_id": "60d5ec49e73e82f8e0e2f8b8",
+                "user_id": "uuid-generated-user-id",
                 "email": "user@example.com",
                 "username": "username",
-                "phone": "0912345678",
-                "login_type": "normal",
-                "google_id": None,
             }
         }
-    }
 
-# --- Request/Response Models Used in Routes ---
-
-# 登入記錄模型 (LoginRecords 集合) - Used implicitly by user_routes.py/get_login_records
+# --- LoginRecord Model ---
 class LoginRecord(BaseModel):
-    id: Optional[str] = None
-    user_id: str
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    login_record_id: str = Field(default_factory=lambda: str(uuid.uuid4()), unique=True, description="Custom unique login record ID (UUID string)")
+    user_id: str 
     login_method: str
     ip_address: str
     device_info: str
     created_at: datetime = Field(default_factory=datetime.now)
     login_timestamp: datetime = Field(default_factory=datetime.now)
 
-    model_config = {
-        "from_attributes": True,
-        "json_schema_extra": {
+    class Config:
+        from_attributes = True
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: lambda o: str(o), PyObjectId: lambda o: str(o)}
+        schema_extra = {
             "example": {
-                "user_id": "user123",
+                "_id": "60d5ec49e73e82f8e0e2f8b9",
+                "login_record_id": "uuid-login-record-id",
+                "user_id": "uuid-user-id",
                 "login_method": "password",
-                "ip_address": "192.168.1.1",
-                "device_info": "Chrome/Windows"
             }
         }
-    }
 
-# 創建用戶請求模型 - Used by user_routes.py/register_user
+# --- Request/Response Models ---
 class UserCreate(BaseModel):
     username: str
     email: EmailStr
@@ -66,78 +119,63 @@ class UserCreate(BaseModel):
     phone: Optional[str] = None
     login_type: str = "normal"
 
-# 登錄請求模型 - Used by user_routes.py/login_user
 class UserLogin(BaseModel):
     username: Optional[str] = None
     email: Optional[EmailStr] = None
-    # phone: Optional[str] = None # 移除 phone 欄位，登入只用 username 或 email
     password: str
 
-# --- 新增：Email 驗證請求模型 ---
 class EmailVerificationRequest(BaseModel):
     email: EmailStr
 
-# --- 新增：完成註冊請求模型 ---
 class CompleteRegistrationRequest(BaseModel):
     email: EmailStr
     username: str
     password: str
     phone: Optional[str] = None
 
-# 綁定請求模型 - Used by user_routes.py/request_bind
 class BindRequest(BaseModel):
     type: str
     value: str
 
-# 驗證綁定請求模型 - Used by user_routes.py/verify_binding
 class VerifyBindingRequest(BaseModel):
     type: str
     value: str
     otp_code: str
 
-# 車輛創建模型 - Used by vehicle_routes.py/register_vehicle
 class VehicleCreate(BaseModel):
-    vehicle_id: str
-    user_id: str
-    vehicle_name: Optional[str] = None
+    user_id: str 
+    vehicle_definition_id: str 
+    nickname: Optional[str] = None 
 
-# 車輛更新模型 - Used by vehicle_routes.py/update_vehicle
-class VehicleUpdate(BaseModel):
-    vehicle_name: Optional[str] = None
-    mileage: Optional[int] = None
+class VehicleUpdate(BaseModel): 
+    nickname: Optional[str] = None
 
-# FCM令牌更新模型 - Used by user_routes.py/update_fcm_token
 class FCMTokenUpdate(BaseModel):
-    user_id: str
+    user_id: str 
     fcm_token: str
     device_info: Optional[str] = None
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "user_id": "user123",
+    class Config: 
+        schema_extra = {
+             "example": {
+                "user_id": "uuid-user-id",
                 "fcm_token": "fGDrT5XAQwetGg...",
                 "device_info": "iPhone 13 Pro, iOS 15.4"
             }
         }
-    }
 
-# 好友操作模型 - Used by user_routes.py/manage_friends
 class FriendAction(BaseModel):
-    user_id: str
-    friend_id: str
+    user_id: str 
+    friend_id: str 
     action: str
 
-# Google登入請求模型 - Used by user_routes.py/login_with_google
 class GoogleLoginRequest(BaseModel):
-    google_id: Optional[str] = None # Made Optional as per usage
-    email: Optional[str] = None # Made Optional as per usage
-    name: Optional[str] = None # Made Optional as per usage
-    picture: Optional[str] = None # Made Optional as per usage
+    google_id: Optional[str] = None
+    email: Optional[str] = None
+    name: Optional[str] = None
+    picture: Optional[str] = None
     login_type: str = "google"
-
-    model_config = { # Changed from Config to model_config
-        "json_schema_extra": {
+    class Config: 
+        schema_extra = {
             "example": {
                 "google_id": "109554286477309922371",
                 "email": "user@gmail.com",
@@ -146,4 +184,3 @@ class GoogleLoginRequest(BaseModel):
                 "login_type": "google"
             }
         }
-    } # Add missing closing brace
