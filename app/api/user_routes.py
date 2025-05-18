@@ -680,3 +680,28 @@ async def login_with_google(
     except Exception as e:
         print(f"Google登入失敗: {str(e)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Google登入失敗: {str(e)}")
+
+# --- 新增：檢查使用者名稱是否已使用 ---
+@router.get("/check-username/{username}", response_model=Dict[str, Any])
+async def check_username_exists(username: str):
+    """
+    檢查使用者名稱是否已被使用。
+    """
+    if db_provider.users_collection is None:
+        print("錯誤：check_username_exists - users_collection 未初始化。")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="用戶資料庫服務未初始化"
+        )
+
+    print(f"檢查使用者名稱是否存在：{username}")
+    if not username or not username.strip():
+        return {"status": "error", "msg": "使用者名稱不可為空", "exists": False}
+
+    user_exists = await db_provider.users_collection.find_one({"username": username}) is not None
+    print(f"使用者名稱 {username} 是否已存在: {user_exists}")
+
+    if user_exists:
+        return {"status": "success", "msg": "使用者名稱已被使用", "exists": True}
+    else:
+        return {"status": "success", "msg": "使用者名稱可使用", "exists": False}
