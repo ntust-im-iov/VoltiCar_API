@@ -408,13 +408,29 @@ async def complete_registration(
         raise HTTPException(status_code=503, detail="用戶資料庫服務未初始化")
 
     now = datetime.now()
-    pending_record = await db_provider.pending_verifications_collection.find_one({ # await
-        "email": email,
-        "is_verified": True
-    })
+
+    # 1. 檢查 Email 的驗證狀態
+    pending_record = await db_provider.pending_verifications_collection.find_one({"email": email})
+
     if not pending_record:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="電子郵件尚未驗證或驗證記錄不存在")
+        #情況1：在 pending_verifications 中完全找不到此 email 的記錄
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="此電子郵件尚未請求驗證，請先獲取驗證郵件。"
+        )
+    
+    if not pending_record.get("is_verified", False):
+        #情況2：在 pending_verifications 中找到記錄，但 is_verified 不是 true
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="電子郵件尚未完成驗證，請檢查您的收件匣並點擊驗證連結。"
+        )
+
+    # 到這裡表示 pending_record 存在且 is_verified 是 true
+
     if await db_provider.users_collection.find_one({"email": email}): # await
+        # 理論上，如果 email 已在 users_collection，它不應該還在 pending_verifications 且 is_verified=true
+        # 但作為雙重檢查，如果真的發生，則優先處理已註冊的情況
         await db_provider.pending_verifications_collection.delete_one({"email": email}) # await
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="此電子郵件已被註冊")
     if await db_provider.users_collection.find_one({"username": username}): # await
