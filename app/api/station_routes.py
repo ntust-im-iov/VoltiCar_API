@@ -120,7 +120,7 @@ async def get_stations_by_city(
         logger.info(f"充電站資訊加載完成並轉換為簡化摘要模型")
 
         if redis: # 保留 cache 寫入
-            await set_cache(redis, cache_key, [s.model_dump() for s in response_data]) # 存儲 dict 形式的 StationSummary
+            await set_cache(redis, cache_key, [s.dict() for s in response_data]) # 存儲 dict 形式的 StationSummary
         
         return response_data
 
@@ -285,7 +285,7 @@ async def get_all_stations_overview(
         logger.info(f"從 AllChargingStations 集合獲取了 {count} 個充電站的概覽資訊並轉換為簡化摘要 (分頁 skip={skip}, limit={limit})。")
 
         if redis: # 保留 cache 寫入
-            await set_cache(redis, cache_key, [s.model_dump() for s in response_data]) # 存儲 dict
+            await set_cache(redis, cache_key, [s.dict() for s in response_data]) # 存儲 dict
             
         return response_data
 
