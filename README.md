@@ -236,54 +236,6 @@ API 使用 FastAPI 自動生成交互式文檔。服務運行後，訪問 `/docs
 
 - `GET /health`: 健康檢查
 
-## 充電站地圖 API 優化與使用建議
-
-為了提升充電站地圖功能的效能和使用者體驗，後端 API 進行了以下優化：
-
-1.  **頻率限制 (Rate Limiting)**:
-    *   對充電站相關的查詢 API (如 `/stations/overview`, `/stations/city/{city}`) 實施了頻率限制，以防止濫用和過載。預設限制為每分鐘數次請求，具體限制請參考 API 文件或錯誤回應。
-
-2.  **地圖概覽 API (`GET /stations/overview`) 優化**:
-    *   此端點設計用於高效獲取地圖可視區域內的充電站概覽資訊。
-    *   **地理空間查詢**: 接受四個可選的地理邊界框查詢參數：`min_lat`, `min_lon`, `max_lat`, `max_lon`。
-        *   前端應根據地圖當前可視區域的西南角和東北角經緯度傳遞這些參數。
-        *   例如: `/stations/overview?min_lon=121.50&min_lat=25.00&max_lon=121.55&max_lat=25.05`
-        *   如果未提供這些參數，API 將返回所有充電站的概覽資訊 (可能會非常多，不建議在生產環境中頻繁使用)。
-        *   **重要**: 此功能依賴於後端 `AllChargingStations` MongoDB 集合中存在一個名為 `location_geo` 的 GeoJSON Point 欄位 (格式: `{ "type": "Point", "coordinates": [longitude, latitude] }`)，並且已為此欄位建立了 `2dsphere` 索引。請確保資料庫已按此方式設定。
-    *   **前端使用建議**:
-        *   **僅請求可視區域數據**: 務必根據地圖的可視範圍傳遞邊界框參數。
-        *   **Debounce/Throttle**: 在地圖移動或縮放時，使用 Debounce 或 Throttle 機制來限制 API 呼叫的頻率，避免過於頻繁的請求。
-        *   **前端快取**: 前端應實施自己的快取機制 (例如，使用瀏覽器的 `localStorage` 或記憶體快取)，以減少對相同區域數據的重複請求。
-
-3.  **按城市查詢 API (`GET /stations/city/{city}`) 優化**:
-    *   **分頁**: 此端點現在支援分頁參數 `skip` (跳過的記錄數，預設 0) 和 `limit` (每頁返回的記錄數，預設 100)。
-        *   例如: `/stations/city/Taipei?skip=0&limit=50`
-    *   **前端使用建議**:
-        *   如果城市內的充電站數量較多，應實作分頁載入或無限滾動等 UI/UX 模式。
-        *   **前端快取**: 同樣建議前端快取已載入的城市數據。
-
-4.  **後端快取 (Redis)**:
-    *   後端已整合 Redis 作為快取層，用於快取 `/stations/overview` 和 `/stations/city/{city}` 的查詢結果，以進一步提升回應速度並減輕資料庫負擔。
-    *   **Redis 設定建議**:
-        *   建議使用 Docker 運行 Redis 服務: `docker run -d -p 6379:6379 --name volticar-redis redis:latest`
-        *   在應用程式的 `.env` 檔案中設定 Redis 連線資訊:
-            ```env
-            REDIS_HOST=localhost
-            REDIS_PORT=6379
-            ```
-        *   如果 Redis 部署在不同主機或有密碼保護，請相應調整連線 URL。
-
-5.  **資料庫索引建議**:
-    *   為確保查詢效能，請檢查並確保以下 MongoDB 索引已建立：
-        *   在 `AllChargingStations` 集合上：
-            *   `location_geo` 欄位 (或您實際使用的 GeoJSON 地理位置欄位) 應有 `2dsphere` 索引。
-            *   `StationID` 欄位應有唯一索引 (如果它是主要識別碼)。
-        *   在各城市充電站集合 (如 `Taipei`, `NewTaipei` 等) 上：
-            *   `StationID` 欄位應有索引。
-            *   如果經常按其他欄位查詢，也應考慮為這些欄位建立索引。
-
-透過以上後端優化和前端的配合，可以顯著提升充電站地圖功能的效能和穩定性。
-
 ## Firebase 推播服務 (開發中)
 
 系統計劃整合 Firebase Cloud Messaging (FCM) 以實現推播通知功能，例如 OTP、系統通知、活動提醒等。相關 API (`/users/update-fcm-token`) 和服務模塊 (`app/services/firebase_service.py`) 已初步建立，但完整功能待後續開發和 Firebase 項目配置。
