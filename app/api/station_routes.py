@@ -205,7 +205,9 @@ async def get_all_stations_overview(
     min_lat: Optional[float] = None,
     min_lon: Optional[float] = None,
     max_lat: Optional[float] = None,
-    max_lon: Optional[float] = None
+    max_lon: Optional[float] = None,
+    skip: int = 0,
+    limit: int = 1000  # 新增：預設限制返回1000筆
 ):
     """
     高效獲取所有充電站的最小化信息，用於地圖概覽。
@@ -217,7 +219,8 @@ async def get_all_stations_overview(
     redis = await get_redis_connection(request)
     cache_key_params = {
         "min_lat": min_lat, "min_lon": min_lon, 
-        "max_lat": max_lat, "max_lon": max_lon
+        "max_lat": max_lat, "max_lon": max_lon,
+        "skip": skip, "limit": limit  # 新增：快取鍵包含分頁參數
     }
     # 移除值為 None 的參數，以確保快取鍵的一致性
     cache_key_params = {k: v for k, v in cache_key_params.items() if v is not None}
@@ -230,10 +233,10 @@ async def get_all_stations_overview(
             
     try:
         query = {}
-        log_message = "全局地圖充電站概覽資訊加載中..."
+        log_message = f"全局地圖充電站概覽資訊加載中 (分頁 skip={skip}, limit={limit})..."
 
         if all(v is not None for v in [min_lat, min_lon, max_lat, max_lon]):
-            log_message = f"地圖充電站概覽資訊加載中，邊界框: ({min_lon},{min_lat}) 至 ({max_lon},{max_lat})"
+            log_message = f"地圖充電站概覽資訊加載中，邊界框: ({min_lon},{min_lat}) 至 ({max_lon},{max_lat}), 分頁: skip={skip}, limit={limit}"
             query = {
                 "location_geo": {
                     "$geoWithin": {
@@ -245,10 +248,12 @@ async def get_all_stations_overview(
                 }
             }
         elif any(v is not None for v in [min_lat, min_lon, max_lat, max_lon]):
+            # 如果提供了部分地理邊界參數，則認為是錯誤的請求
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="請提供完整的地理邊界框參數 (min_lat, min_lon, max_lat, max_lon) 或不提供任何參數以獲取所有站點。"
+                detail="請提供完整的地理邊界框參數 (min_lat, min_lon, max_lat, max_lon) 或不提供任何地理參數以獲取所有站點 (將套用預設分頁)。"
             )
+        # 若未提供地理邊界參數，則 query 保持為 {}，將查詢所有站點，但會套用 skip 和 limit
         
         logger.info(log_message)
         
@@ -266,11 +271,11 @@ async def get_all_stations_overview(
             "Connectors": 1, "ChargingPoints": 1, "Spaces": 1,
         }
 
-        stations_cursor = optimized_collection.find(query, projection)
-        all_stations_overview_list = await stations_cursor.to_list(length=None)
+        stations_cursor = optimized_collection.find(query, projection).skip(skip).limit(limit) # 新增：應用 skip 和 limit
+        all_stations_overview_list = await stations_cursor.to_list(length=limit) # 修改：使用 limit 作為 length
         
         count = len(all_stations_overview_list)
-        logger.info(f"從 AllChargingStations 集合獲取了 {count} 個充電站的概覽資訊。")
+        logger.info(f"從 AllChargingStations 集合獲取了 {count} 個充電站的概覽資訊 (分頁 skip={skip}, limit={limit})。")
 
         if redis:
             await set_cache(redis, cache_key, all_stations_overview_list)
