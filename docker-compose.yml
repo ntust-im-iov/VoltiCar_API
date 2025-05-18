@@ -16,6 +16,8 @@ services:
       - PYTHONIOENCODING=utf-8
       - LANG=C.UTF-8
       - LC_ALL=C.UTF-8
+      - REDIS_HOST=redis # 新增 Redis 主機環境變數
+      - REDIS_PORT=6379
       # 移除 SSL 環境變數，Nginx 將處理 SSL
     volumes:
       - ./app:/app/app
@@ -32,11 +34,33 @@ services:
       - volticar-network
     command: > # 保持 --proxy-headers，並信任來自 localhost 和 Docker 內部連接 IP 的代理標頭
       uvicorn main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='127.0.0.1,172.18.0.1'
+    depends_on:
+      - redis
 
 # --- 移除 Nginx 服務 ---
 # nginx:
 #   ... (整個 nginx 服務區塊被移除)
 
+  redis:
+    image: redis:7-alpine # 使用較新的 Alpine 版本以減小映像大小
+    container_name: volticar-redis
+    ports:
+      - "127.0.0.1:6379:6379" # 將 Redis 埠映射到主機的 localhost，僅供本地開發/調試
+    restart: always
+    networks:
+      - volticar-network
+    # 可以選擇性地掛載一個 volume 來持久化 Redis 數據，但對於快取可能不需要
+    # volumes:
+    #   - redis-data:/data
+    healthcheck: # 新增健康檢查
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 networks:
   volticar-network:
     driver: bridge
+# 如果選擇了持久化 Redis 數據，則需要定義 volume
+# volumes:
+#   redis-data:
