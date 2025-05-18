@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Dict, Any # Removed Optional
+from typing import List, Dict, Any, Optional # Restored Optional
 
 # 地址模型
 class Address(BaseModel):
@@ -66,3 +66,15 @@ class ChargeStationCreate(BaseModel):
     PositionLon: float
     Reference: Dict[str, Any]
     Telephone: str
+
+# 充電站摘要模型 (用於列表端點) - 根據用戶反饋重命名並簡化
+class StationSummary(BaseModel):
+    StationID: str
+    StationName: Optional[str] = None
+    PositionLat: float
+    PositionLon: float
+    ChargingPoints: Optional[int] = None # 設為 Optional 以適應不同數據源和簡化需求
+
+    model_config = {
+        "from_attributes": True
+    }
