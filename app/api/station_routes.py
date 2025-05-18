@@ -5,7 +5,7 @@ import logging
 from main import limiter # 從 main.py 匯入 limiter
 from app.utils.cache import get_redis_connection, get_cache, set_cache, create_cache_key
 
-from app.models.station import ChargeStation, ChargeStationCreate
+from app.models.station import ChargeStation, ChargeStationCreate, StationSummary
 # from app.database.mongodb import get_charge_station_collection # Will be accessed via db_provider
 from app.database import mongodb as db_provider # Import the module itself
 from app.utils.helpers import handle_mongo_data
@@ -48,10 +48,10 @@ CITY_COLLECTIONS = list(CITY_MAPPING.values())
 
 
 # 按城市查詢充電站
-@router.get("/city/{city}", response_model=List[Dict[str, Any]])
+@router.get("/city/{city}", response_model=List[StationSummary])
 @limiter.limit("10/minute")
 async def get_stations_by_city(
-    request: Request, 
+    request: Request,
     city: str,
     skip: int = 0,
     limit: int = 100  # 預設每頁100筆
@@ -98,17 +98,33 @@ async def get_stations_by_city(
         stations_list = await stations_cursor.to_list(length=limit)
         logger.info(f"在集合 {collection_name} 中找到 {len(stations_list)} 個充電站 (分頁 skip={skip}, limit={limit})")
         
-        processed_stations = handle_mongo_data(stations_list)
-        # 添加城市標識
-        for station_data in processed_stations:
-            station_data["city_collection"] = collection_name
+        raw_stations = handle_mongo_data(stations_list)
         
-        logger.info(f"充電站資訊加載完成")
+        response_data = []
+        for station_data in raw_stations:
+            station_name_data = station_data.get("StationName")
+            station_name_str = None
+            if isinstance(station_name_data, dict):
+                station_name_str = station_name_data.get("Zh_tw")
+            elif isinstance(station_name_data, str): # 如果 StationName 已經是字符串
+                station_name_str = station_name_data
+            
+            summary = StationSummary(
+                StationID=station_data.get("StationID"),
+                StationName=station_name_str,
+                PositionLat=station_data.get("PositionLat"),
+                PositionLon=station_data.get("PositionLon"),
+                ChargingPoints=station_data.get("ChargingPoints")
+            )
+            response_data.append(summary)
+        
+        logger.info(f"充電站資訊加載完成並轉換為簡化摘要模型")
 
         if redis:
-            await set_cache(redis, cache_key, processed_stations)
+            # 快取轉換後的摘要數據以提高效能
+            await set_cache(redis, cache_key, [s.dict() for s in response_data]) 
         
-        return processed_stations
+        return response_data
 
     except HTTPException as http_exc:
         raise http_exc
@@ -198,7 +214,7 @@ async def get_station(request: Request, station_id: str):
 
 
 # 獲取所有充電站 (優化地圖概覽)
-@router.get("/overview", response_model=List[Dict[str, Any]]) # 將路徑改為 /overview
+@router.get("/overview", response_model=List[StationSummary]) # 將路徑改為 /overview
 @limiter.limit("10/minute")
 async def get_all_stations_overview(
     request: Request,
@@ -268,19 +284,35 @@ async def get_all_stations_overview(
         optimized_collection = charge_station_db["AllChargingStations"]
         projection = {
             "_id": 0, "StationID": 1, "PositionLat": 1, "PositionLon": 1,
-            "Connectors": 1, "ChargingPoints": 1, "Spaces": 1,
+            "ChargingPoints": 1, "StationName.Zh_tw": 1, 
+            # "Connectors": 1, # 根據簡化的 StationSummary 移除
+            # "Spaces": 1, # Spaces 欄位不在 ChargeStation 模型中，暫時移除
         }
 
-        stations_cursor = optimized_collection.find(query, projection).skip(skip).limit(limit) # 新增：應用 skip 和 limit
-        all_stations_overview_list = await stations_cursor.to_list(length=limit) # 修改：使用 limit 作為 length
+        stations_cursor = optimized_collection.find(query, projection).skip(skip).limit(limit)
+        raw_overview_list = await stations_cursor.to_list(length=limit)
         
-        count = len(all_stations_overview_list)
-        logger.info(f"從 AllChargingStations 集合獲取了 {count} 個充電站的概覽資訊 (分頁 skip={skip}, limit={limit})。")
+        response_data = []
+        for station_data in raw_overview_list:
+            station_name_val = station_data.get("StationName", {}).get("Zh_tw") if isinstance(station_data.get("StationName"), dict) else None
+            
+            summary = StationSummary(
+                StationID=station_data.get("StationID"),
+                StationName=station_name_val, 
+                PositionLat=station_data.get("PositionLat"),
+                PositionLon=station_data.get("PositionLon"),
+                ChargingPoints=station_data.get("ChargingPoints")
+            )
+            response_data.append(summary)
+
+        count = len(response_data)
+        logger.info(f"從 AllChargingStations 集合獲取了 {count} 個充電站的概覽資訊並轉換為簡化摘要 (分頁 skip={skip}, limit={limit})。")
 
         if redis:
-            await set_cache(redis, cache_key, all_stations_overview_list)
+            # 快取轉換後的摘要數據
+            await set_cache(redis, cache_key, [s.dict() for s in response_data])
             
-        return all_stations_overview_list
+        return response_data
 
     except HTTPException as http_exc:
         raise http_exc
