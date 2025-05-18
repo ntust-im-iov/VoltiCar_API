@@ -2,8 +2,8 @@ from fastapi import APIRouter, HTTPException, status, Depends, Request
 from typing import List, Dict, Any, Optional
 from bson import ObjectId
 import logging
-from main import limiter # 從 main.py 匯入 limiter
-from app.utils.cache import get_redis_connection, get_cache, set_cache, create_cache_key
+# from app.dependencies import limiter # 移除 limiter 導入
+# from app.utils.cache import get_redis_connection, get_cache, set_cache, create_cache_key # 移除 cache 導入
 
 from app.models.station import ChargeStation, ChargeStationCreate, StationSummary
 from app.database import mongodb as db_provider # Import the module itself
@@ -48,22 +48,22 @@ CITY_COLLECTIONS = list(CITY_MAPPING.values())
 
 # 按城市查詢充電站
 @router.get("/city/{city}", response_model=List[StationSummary])
-@limiter.limit("10/minute")
+# @limiter.limit("10/minute") # 移除 limiter
 async def get_stations_by_city(
     request: Request,
     city: str,
     skip: int = 0,
     limit: int = 100  # 預設每頁100筆
 ):
-    redis = await get_redis_connection(request)
-    cache_key_params = {"city": city, "skip": skip, "limit": limit}
-    cache_key = create_cache_key("stations_by_city", **cache_key_params)
+    # redis = await get_redis_connection(request) # 移除 cache 相關
+    # cache_key_params = {"city": city, "skip": skip, "limit": limit} # 移除 cache 相關
+    # cache_key = create_cache_key("stations_by_city", **cache_key_params) # 移除 cache 相關
 
-    if redis:
-        cached_data = await get_cache(redis, cache_key)
-        if cached_data is not None:
-            # Assuming cached_data are already in the correct format (list of dicts for StationSummary)
-            return [StationSummary(**s) for s in cached_data]
+    # if redis: # 移除 cache 相關
+    #     cached_data = await get_cache(redis, cache_key) # 移除 cache 相關
+    #     if cached_data is not None: # 移除 cache 相關
+    #         # Assuming cached_data are already in the correct format (list of dicts for StationSummary) # 移除 cache 相關
+    #         return [StationSummary(**s) for s in cached_data] # 移除 cache 相關
 
     collection_name = CITY_MAPPING.get(city, city)
     logger.info(f"查詢城市: {city}, 映射到集合: {collection_name}, 分頁: skip={skip}, limit={limit}")
@@ -76,7 +76,7 @@ async def get_stations_by_city(
         if collection_name not in CITY_COLLECTIONS and collection_name not in list(
             CITY_MAPPING.values()
         ):
-            all_collection_names = await db_provider.get_charge_station_collection()
+            all_collection_names = db_provider.get_charge_station_collection() # 同步調用
             matching_cities = [
                 c for c in all_collection_names if collection_name.lower() in c.lower()
             ]
@@ -86,7 +86,7 @@ async def get_stations_by_city(
                 )
                 collection_name = matching_cities[0]
 
-        city_collection = await db_provider.get_charge_station_collection(collection_name)
+        city_collection = db_provider.get_charge_station_collection(collection_name) # 同步調用
         if city_collection is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -94,7 +94,7 @@ async def get_stations_by_city(
             )
 
         stations_cursor = city_collection.find().skip(skip).limit(limit)
-        stations_list = await stations_cursor.to_list(length=limit)
+        stations_list = list(stations_cursor) # 同步轉換
         logger.info(f"在集合 {collection_name} 中找到 {len(stations_list)} 個充電站 (分頁 skip={skip}, limit={limit})")
         
         raw_stations = handle_mongo_data(stations_list)
@@ -119,8 +119,8 @@ async def get_stations_by_city(
         
         logger.info(f"充電站資訊加載完成並轉換為簡化摘要模型")
 
-        if redis:
-            await set_cache(redis, cache_key, [s.dict() for s in response_data]) 
+        # if redis: # 移除 cache 相關
+        #     await set_cache(redis, cache_key, [s.dict() for s in response_data])  # 移除 cache 相關
         
         return response_data
 
@@ -135,8 +135,8 @@ async def get_stations_by_city(
 
 # 根據ID獲取充電站 (保留 HEAD 版本，路徑為 /id/{station_id})
 @router.get("/id/{station_id}", response_model=Dict[str, Any]) 
-@limiter.limit("30/minute")
-async def get_station(request: Request, station_id: str): # Added request and limiter from my branch's version
+# @limiter.limit("30/minute") # 移除 limiter
+async def get_station(request: Request, station_id: str): # Added request from my branch's version
     logger.info(f"查詢充電站ID: {station_id}")
     logger.info(f"充電站資訊加載中...")
 
@@ -160,7 +160,7 @@ async def get_station(request: Request, station_id: str): # Added request and li
         else:
             search_query = {"StationID": station_id}
             
-        station = await optimized_collection.find_one(search_query)
+        station = optimized_collection.find_one(search_query) # 同步調用
 
         if station:
             station_data = handle_mongo_data(station)
@@ -169,17 +169,17 @@ async def get_station(request: Request, station_id: str): # Added request and li
             return station_data
 
         logger.info(f"在 AllChargingStations 未找到 {station_id}，嘗試遍歷城市集合...")
-        city_collection_names = await db_provider.get_charge_station_collection() 
+        city_collection_names = db_provider.get_charge_station_collection() # 同步調用
 
         for city_name_iter in city_collection_names: # Renamed city_name to avoid conflict with outer scope if any
             if city_name_iter == "AllChargingStations": 
                 continue
             try:
-                city_collection_iter = await db_provider.get_charge_station_collection(city_name_iter)
+                city_collection_iter = db_provider.get_charge_station_collection(city_name_iter) # 同步調用
                 if city_collection_iter is None:
                     continue
                 
-                station_in_city = await city_collection_iter.find_one(search_query)
+                station_in_city = city_collection_iter.find_one(search_query) # 同步調用
                 
                 if station_in_city:
                     station_data = handle_mongo_data(station_in_city)
@@ -204,7 +204,7 @@ async def get_station(request: Request, station_id: str): # Added request and li
 
 # 獲取所有充電站 (優化地圖概覽 - HEAD 版本)
 @router.get("/overview", response_model=List[StationSummary]) 
-@limiter.limit("10/minute")
+# @limiter.limit("10/minute") # 移除 limiter
 async def get_all_stations_overview(
     request: Request,
     min_lat: Optional[float] = None,
@@ -214,19 +214,19 @@ async def get_all_stations_overview(
     skip: int = 0,
     limit: int = 1000  
 ):
-    redis = await get_redis_connection(request)
-    cache_key_params = {
-        "min_lat": min_lat, "min_lon": min_lon, 
-        "max_lat": max_lat, "max_lon": max_lon,
-        "skip": skip, "limit": limit 
-    }
-    cache_key_params = {k: v for k, v in cache_key_params.items() if v is not None}
-    cache_key = create_cache_key("stations_overview", **cache_key_params)
+    # redis = await get_redis_connection(request) # 移除 cache 相關
+    # cache_key_params = { # 移除 cache 相關
+    #     "min_lat": min_lat, "min_lon": min_lon,  # 移除 cache 相關
+    #     "max_lat": max_lat, "max_lon": max_lon, # 移除 cache 相關
+    #     "skip": skip, "limit": limit  # 移除 cache 相關
+    # } # 移除 cache 相關
+    # cache_key_params = {k: v for k, v in cache_key_params.items() if v is not None} # 移除 cache 相關
+    # cache_key = create_cache_key("stations_overview", **cache_key_params) # 移除 cache 相關
 
-    if redis:
-        cached_data = await get_cache(redis, cache_key)
-        if cached_data is not None:
-            return [StationSummary(**s) for s in cached_data]
+    # if redis: # 移除 cache 相關
+    #     cached_data = await get_cache(redis, cache_key) # 移除 cache 相關
+    #     if cached_data is not None: # 移除 cache 相關
+    #         return [StationSummary(**s) for s in cached_data] # 移除 cache 相關
             
     try:
         query = {}
@@ -266,7 +266,7 @@ async def get_all_stations_overview(
         }
 
         stations_cursor = optimized_collection.find(query, projection).skip(skip).limit(limit)
-        raw_overview_list = await stations_cursor.to_list(length=limit)
+        raw_overview_list = list(stations_cursor) # 同步轉換
         
         response_data = []
         for station_data in raw_overview_list:
@@ -284,8 +284,8 @@ async def get_all_stations_overview(
         count = len(response_data)
         logger.info(f"從 AllChargingStations 集合獲取了 {count} 個充電站的概覽資訊並轉換為簡化摘要 (分頁 skip={skip}, limit={limit})。")
 
-        if redis:
-            await set_cache(redis, cache_key, [s.dict() for s in response_data])
+        # if redis: # 移除 cache 相關
+        #     await set_cache(redis, cache_key, [s.dict() for s in response_data]) # 移除 cache 相關
             
         return response_data
 
@@ -300,7 +300,7 @@ async def get_all_stations_overview(
 
 # 創建新充電站
 @router.post("/", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
-@limiter.limit("30/minute") # Added limiter from my branch's version
+# @limiter.limit("30/minute") # 移除 limiter
 async def create_station(
     request: Request, # Added request from my branch's version
     station: ChargeStationCreate, current_user: Dict = Depends(get_current_user)
@@ -322,7 +322,7 @@ async def create_station(
         if db_provider.charge_station_db is None:
             raise HTTPException(status_code=503, detail="充電站資料庫服務未初始化")
         
-        city_collection = await db_provider.get_charge_station_collection(collection_name)
+        city_collection = db_provider.get_charge_station_collection(collection_name) # 同步調用
         if city_collection is None: # Check if collection was actually returned
              raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -330,9 +330,9 @@ async def create_station(
             )
 
         station_dict = station.model_dump() # Assuming Pydantic v2 style
-        result = await city_collection.insert_one(station_dict)
+        result = city_collection.insert_one(station_dict) # 同步調用
 
-        created_station = await city_collection.find_one({"_id": result.inserted_id})
+        created_station = city_collection.find_one({"_id": result.inserted_id}) # 同步調用
 
         return handle_mongo_data(created_station)
     except ValueError as ve: # Catch specific validation errors
