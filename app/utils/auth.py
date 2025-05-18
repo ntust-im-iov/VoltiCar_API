@@ -4,7 +4,8 @@ from datetime import datetime, timedelta
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from typing import Optional, Dict, Any
-from app.database.mongodb import users_collection
+# from app.database.mongodb import users_collection # Remove direct import
+from app.database import mongodb as db_provider # Import the module itself
 import os
 
 # 安全密鑰配置
@@ -27,32 +28,45 @@ def get_password_hash(password):
     return pwd_context.hash(password)
 
 # 根據郵箱獲取用戶
-def get_user_by_email(email: str) -> Dict[str, Any]:
-    user = users_collection.find_one({"email": email})
+async def get_user_by_email(email: str) -> Dict[str, Any]: # async
+    if db_provider.users_collection is None:
+        # Or handle this error more gracefully depending on application needs
+        raise HTTPException(status_code=503, detail="用戶資料庫服務未初始化 (auth)")
+    user = await db_provider.users_collection.find_one({"email": email}) # await
     if user:
         user["_id"] = str(user["_id"])
         return user
     return None
 
 # 根據用戶名獲取用戶
-def get_user_by_username(username: str) -> Dict[str, Any]:
-    user = users_collection.find_one({"username": username})
+async def get_user_by_username(username: str) -> Dict[str, Any]: # async
+    if db_provider.users_collection is None:
+        raise HTTPException(status_code=503, detail="用戶資料庫服務未初始化 (auth)")
+    user = await db_provider.users_collection.find_one({"username": username}) # await
     if user:
         user["_id"] = str(user["_id"])
         return user
     return None
 
 # 根據用戶ID獲取用戶
-def get_user_by_id(user_id: str) -> Dict[str, Any]:
-    user = users_collection.find_one({"user_id": user_id})
+async def get_user_by_id(user_id: str) -> Dict[str, Any]: # async
+    if db_provider.users_collection is None:
+        # This function is critical for get_current_user, so an uninitialized DB is a major issue.
+        # Raising 503 might be too aggressive if called outside request context,
+        # but in get_current_user context, it's a server-side problem.
+        print("CRITICAL: users_collection is None in get_user_by_id") # Add logging
+        return None # Or raise an appropriate exception if this function can be called early
+    user = await db_provider.users_collection.find_one({"user_id": user_id}) # await
     if user:
         user["_id"] = str(user["_id"])
         return user
     return None
 
 # 根據手機號獲取用戶
-def get_user_by_phone(phone: str) -> Dict[str, Any]:
-    user = users_collection.find_one({"phone": phone})
+async def get_user_by_phone(phone: str) -> Dict[str, Any]: # async
+    if db_provider.users_collection is None:
+        raise HTTPException(status_code=503, detail="用戶資料庫服務未初始化 (auth)")
+    user = await db_provider.users_collection.find_one({"phone": phone}) # await
     if user:
         user["_id"] = str(user["_id"])
         return user
@@ -96,7 +110,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any
         raise credentials_exception
 
     # 使用 user_id 從數據庫獲取用戶
-    user = get_user_by_id(user_id)
+    user = await get_user_by_id(user_id) # await
     if user is None:
         # 如果找不到用戶
         raise credentials_exception

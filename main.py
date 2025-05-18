@@ -101,10 +101,19 @@ async def root():
 @app.get("/health")
 async def health_check():
     # 檢查數據庫連接
-    from app.database.mongodb import client, volticar_db
+    # client 和 volticar_db 是在 app.database.mongodb 中定義並在啟動時初始化的全域變數
+    from app.database.mongodb import client, volticar_db 
     
     db_status = "正常" if client is not None and volticar_db is not None else "無法連接"
     
+    # 可以選擇性地執行一個快速的 ping 操作來確認連接仍然活躍
+    # if client:
+    #     try:
+    #         await client.admin.command('ping')
+    #         db_status = "正常 (Ping成功)"
+    #     except Exception:
+    #         db_status = "連接異常 (Ping失敗)"
+
     return {
         "status": "healthy", 
         "message": "API服務正常運行中",
@@ -138,12 +147,15 @@ async def root():
 # --- Catch-all route removed ---
 
 
+from app.database.mongodb import connect_and_initialize_db, close_mongo_connection # Import new async functions
+
 # 應用程式啟動事件處理
 @app.on_event("startup")
 async def startup_event_handler():
     """
     應用程式啟動事件。
     """
+    await connect_and_initialize_db() # Call the async DB connection and initialization
     host = os.getenv("API_HOST", "0.0.0.0")
     port = int(os.getenv("API_PORT", 22000))
     logger.info(f"✅ Volticar API 已啟動於 https://{host}:{port}") # 改為寫入日誌
@@ -159,6 +171,7 @@ async def shutdown_event_handler():
     """
     應用程式關閉事件。
     """
+    await close_mongo_connection() # Call the async DB close connection
     logger.info("🛑 Volticar API 已關閉。") # 改為寫入日誌
     # 強制刷新日誌緩衝區，確保訊息立即寫入檔案
     for handler in logger.handlers:
