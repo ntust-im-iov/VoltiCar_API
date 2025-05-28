@@ -13,7 +13,7 @@ class Connector(BaseModel):
     Type: int
     Power: int
     Quantity: int
-    Description: str
+    Description: Optional[str] = None
 
 # 位置模型
 class Location(BaseModel):
@@ -74,6 +74,10 @@ class StationSummary(BaseModel):
     PositionLat: float
     PositionLon: float
     ChargingPoints: Optional[int] = None # 設為 Optional 以適應不同數據源和簡化需求
+    Connectors: Optional[List[Connector]] = None
+    ParkingRate: Optional[str] = None
+    ChargingRate: Optional[str] = None
+    ServiceTime: Optional[str] = None
 
     model_config = {
         "from_attributes": True
