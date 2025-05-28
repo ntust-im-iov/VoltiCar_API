@@ -262,7 +262,8 @@ async def get_all_stations_overview(
         optimized_collection = db_provider.charge_station_db["AllChargingStations"]
         projection = {
             "_id": 0, "StationID": 1, "PositionLat": 1, "PositionLon": 1,
-            "ChargingPoints": 1, "StationName.Zh_tw": 1, 
+            "ChargingPoints": 1, "StationName.Zh_tw": 1,
+            "Connectors": 1, "ParkingRate": 1, "ChargingRate": 1, "ServiceTime": 1,
         }
 
         stations_cursor = optimized_collection.find(query, projection).skip(skip).limit(limit)
@@ -274,10 +275,14 @@ async def get_all_stations_overview(
             
             summary = StationSummary(
                 StationID=station_data.get("StationID"),
-                StationName=station_name_val, 
+                StationName=station_name_val,
                 PositionLat=station_data.get("PositionLat"),
                 PositionLon=station_data.get("PositionLon"),
-                ChargingPoints=station_data.get("ChargingPoints")
+                ChargingPoints=station_data.get("ChargingPoints"),
+                Connectors=station_data.get("Connectors"),
+                ParkingRate=station_data.get("ParkingRate"),
+                ChargingRate=station_data.get("ChargingRate"),
+                ServiceTime=station_data.get("ServiceTime")
             )
             response_data.append(summary)
 
