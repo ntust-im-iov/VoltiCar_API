@@ -1,12 +1,12 @@
-from pydantic import BaseModel
-from typing import List, Dict, Any, Optional # Restored Optional
+from pydantic import BaseModel, Field
+from typing import List, Dict, Any, Optional
 
-# 地址模型
-class Address(BaseModel):
-    City: str
-    Town: str
-    Road: str
-    No: str
+# 地址模型 (重命名為 LocationAddress)
+class LocationAddress(BaseModel):
+    City: Optional[str] = None
+    Town: Optional[str] = None
+    Road: Optional[str] = None
+    No: Optional[str] = None
 
 # 連接器模型
 class Connector(BaseModel):
@@ -17,7 +17,7 @@ class Connector(BaseModel):
 
 # 位置模型
 class Location(BaseModel):
-    Address: Address
+    Address: Optional[LocationAddress] = None # 更新類型引用
 
 # 參考模型
 class Reference(BaseModel):
@@ -39,7 +39,7 @@ class ChargeStation(BaseModel):
     OperationType: int
     OperatorID: str
     ParkingRate: str
-    PhotoURLs: List[str] = [] # Added type hint for list items
+    PhotoURLs: List[str] = []
     PositionLat: float
     PositionLon: float
     Reference: Reference
@@ -61,7 +61,7 @@ class ChargeStationCreate(BaseModel):
     OperationType: int
     OperatorID: str
     ParkingRate: str
-    PhotoURLs: List[str] = [] # Added type hint for list items
+    PhotoURLs: List[str] = []
     PositionLat: float
     PositionLon: float
     Reference: Dict[str, Any]
@@ -73,11 +73,7 @@ class StationSummary(BaseModel):
     StationName: Optional[str] = None
     PositionLat: float
     PositionLon: float
-    ChargingPoints: Optional[int] = None # 設為 Optional 以適應不同數據源和簡化需求
-    Connectors: Optional[List[Connector]] = None
-    ParkingRate: Optional[str] = None
-    ChargingRate: Optional[str] = None
-    ServiceTime: Optional[str] = None
+    Address: Optional[LocationAddress] = Field(default=None) # 使用 LocationAddress 並採納 Field(default=None)
 
     model_config = {
         "from_attributes": True
