@@ -3,10 +3,10 @@ from typing import List, Dict, Any, Optional # Restored Optional
 
 # 地址模型
 class Address(BaseModel):
-    City: str
-    Town: str
-    Road: str
-    No: str
+    City: Optional[str] = None
+    Town: Optional[str] = None
+    Road: Optional[str] = None
+    No: Optional[str] = None
 
 # 連接器模型
 class Connector(BaseModel):
@@ -17,7 +17,7 @@ class Connector(BaseModel):
 
 # 位置模型
 class Location(BaseModel):
-    Address: Address
+    Address: Optional[Address] = None
 
 # 參考模型
 class Reference(BaseModel):
@@ -73,11 +73,7 @@ class StationSummary(BaseModel):
     StationName: Optional[str] = None
     PositionLat: float
     PositionLon: float
-    ChargingPoints: Optional[int] = None # 設為 Optional 以適應不同數據源和簡化需求
-    Connectors: Optional[List[Connector]] = None
-    ParkingRate: Optional[str] = None
-    ChargingRate: Optional[str] = None
-    ServiceTime: Optional[str] = None
+    Address: Optional[Address] = None
 
     model_config = {
         "from_attributes": True
