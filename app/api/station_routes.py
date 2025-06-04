@@ -108,12 +108,14 @@ async def get_stations_by_city(
             elif isinstance(station_name_data, str): 
                 station_name_str = station_data.get("StationName") # 修正此處
             
+            address_val_city = station_data.get("Location", {}).get("Address") if isinstance(station_data.get("Location"), dict) else None
             summary = StationSummary(
                 StationID=station_data.get("StationID"),
                 StationName=station_name_str,
                 PositionLat=station_data.get("PositionLat"),
                 PositionLon=station_data.get("PositionLon"),
-                ChargingPoints=station_data.get("ChargingPoints")
+                Address=address_val_city,
+                # ChargingPoints is no longer in StationSummary
             )
             response_data.append(summary)
         
@@ -261,9 +263,7 @@ async def get_all_stations_overview(
 
         optimized_collection = db_provider.charge_station_db["AllChargingStations"]
         projection = {
-            "_id": 0, "StationID": 1, "PositionLat": 1, "PositionLon": 1,
-            "ChargingPoints": 1, "StationName.Zh_tw": 1,
-            "Connectors": 1, "ParkingRate": 1, "ChargingRate": 1, "ServiceTime": 1,
+            "_id": 0, "StationID": 1, "PositionLat": 1, "PositionLon": 1, "StationName.Zh_tw": 1, "Location.Address": 1,
         }
 
         stations_cursor = optimized_collection.find(query, projection).skip(skip).limit(limit)
@@ -272,17 +272,13 @@ async def get_all_stations_overview(
         response_data = []
         for station_data in raw_overview_list:
             station_name_val = station_data.get("StationName", {}).get("Zh_tw") if isinstance(station_data.get("StationName"), dict) else None
-            
+            address_val = station_data.get("Location", {}).get("Address") if isinstance(station_data.get("Location"), dict) else None
             summary = StationSummary(
                 StationID=station_data.get("StationID"),
                 StationName=station_name_val,
                 PositionLat=station_data.get("PositionLat"),
                 PositionLon=station_data.get("PositionLon"),
-                ChargingPoints=station_data.get("ChargingPoints"),
-                Connectors=station_data.get("Connectors"),
-                ParkingRate=station_data.get("ParkingRate"),
-                ChargingRate=station_data.get("ChargingRate"),
-                ServiceTime=station_data.get("ServiceTime")
+                Address=address_val,
             )
             response_data.append(summary)
 
