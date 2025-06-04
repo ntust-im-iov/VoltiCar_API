@@ -1,8 +1,8 @@
-from pydantic import BaseModel
+from pydantic import BaseModel # Field 不再需要
 from typing import List, Dict, Any, Optional # Restored Optional
 
-# 地址模型
-class Address(BaseModel):
+# 地址模型 (重命名為 LocationAddress)
+class LocationAddress(BaseModel):
     City: Optional[str] = None
     Town: Optional[str] = None
     Road: Optional[str] = None
@@ -17,7 +17,7 @@ class Connector(BaseModel):
 
 # 位置模型
 class Location(BaseModel):
-    Address: Optional[Address] = None
+    Address: Optional[LocationAddress] = None # 更新類型引用
 
 # 參考模型
 class Reference(BaseModel):
@@ -73,7 +73,7 @@ class StationSummary(BaseModel):
     StationName: Optional[str] = None
     PositionLat: float
     PositionLon: float
-    Address: Optional[Address] = None
+    Address: Optional[LocationAddress] = None # 恢復為 Optional，並更新類型引用
 
     model_config = {
         "from_attributes": True

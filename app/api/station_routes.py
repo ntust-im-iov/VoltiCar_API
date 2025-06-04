@@ -272,14 +272,31 @@ async def get_all_stations_overview(
         response_data = []
         for station_data in raw_overview_list:
             station_name_val = station_data.get("StationName", {}).get("Zh_tw") if isinstance(station_data.get("StationName"), dict) else None
-            address_val = station_data.get("Location", {}).get("Address") if isinstance(station_data.get("Location"), dict) else None
-            summary = StationSummary(
-                StationID=station_data.get("StationID"),
-                StationName=station_name_val,
-                PositionLat=station_data.get("PositionLat"),
-                PositionLon=station_data.get("PositionLon"),
-                Address=address_val,
-            )
+            
+            station_name_val = station_data.get("StationName", {}).get("Zh_tw") if isinstance(station_data.get("StationName"), dict) else None
+            
+            summary_init_data = {
+                "StationID": station_data.get("StationID"),
+                "StationName": station_name_val,
+                "PositionLat": station_data.get("PositionLat"),
+                "PositionLon": station_data.get("PositionLon"),
+            }
+            
+            address_raw_data = station_data.get("Location", {}).get("Address")
+            if isinstance(address_raw_data, dict):
+                summary_init_data["Address"] = address_raw_data # 如果是有效字典，則添加
+            else:
+                # 如果 address_raw_data 不是字典 (包括 None 或其他類型)
+                # 我們不將 Address 鍵添加到 summary_init_data 中
+                # 這樣 StationSummary 的 default_factory=Address 將會生效
+                if address_raw_data is not None: # 僅記錄非 None 的無效數據
+                    logger.warning(
+                        f"StationID {station_data.get('StationID')}: "
+                        f"Address data from DB is not a dict (type: {type(address_raw_data)}, value: {repr(address_raw_data)}). "
+                        f"Relying on default_factory for Address in StationSummary."
+                    )
+            
+            summary = StationSummary(**summary_init_data)
             response_data.append(summary)
 
         count = len(response_data)
