@@ -1,5 +1,5 @@
-from pydantic import BaseModel # Field 不再需要
-from typing import List, Dict, Any, Optional # Restored Optional
+from pydantic import BaseModel, Field
+from typing import List, Dict, Any, Optional
 
 # 地址模型 (重命名為 LocationAddress)
 class LocationAddress(BaseModel):
@@ -39,7 +39,7 @@ class ChargeStation(BaseModel):
     OperationType: int
     OperatorID: str
     ParkingRate: str
-    PhotoURLs: List[str] = [] # Added type hint for list items
+    PhotoURLs: List[str] = []
     PositionLat: float
     PositionLon: float
     Reference: Reference
@@ -61,7 +61,7 @@ class ChargeStationCreate(BaseModel):
     OperationType: int
     OperatorID: str
     ParkingRate: str
-    PhotoURLs: List[str] = [] # Added type hint for list items
+    PhotoURLs: List[str] = []
     PositionLat: float
     PositionLon: float
     Reference: Dict[str, Any]
@@ -73,7 +73,7 @@ class StationSummary(BaseModel):
     StationName: Optional[str] = None
     PositionLat: float
     PositionLon: float
-    Address: Optional[LocationAddress] = None # 恢復為 Optional，並更新類型引用
+    Address: Optional[LocationAddress] = Field(default=None) # 使用 LocationAddress 並採納 Field(default=None)
 
     model_config = {
         "from_attributes": True
