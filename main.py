@@ -5,6 +5,8 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import redis.asyncio as aioredis # 匯入 aioredis
+import ipaddress # 新增導入
+from typing import Optional # 新增導入
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import os
@@ -75,8 +77,27 @@ app = FastAPI(
     }
 )
 
+# --- 自訂速率限制器的 Key 函數 ---
+def custom_key_func(request: Request) -> Optional[str]:
+    """
+    自訂速率限制器的 key 函數。
+    如果請求來自私有IP或本地回環地址，則返回 None 以繞過限制。
+    """
+    ip_str = get_remote_address(request)
+    try:
+        ip = ipaddress.ip_address(ip_str)
+        if ip.is_private or ip.is_loopback:
+            logger.info(f"速率限制已為本地 IP 繞過: {ip_str}")
+            return None  # 返回 None 將繞過此請求的速率限制
+    except ValueError:
+        # 如果 ip_str 不是有效的 IP 地址，它將被用作一個 key。
+        logger.warning(f"速率限制器收到非 IP 的 key: {ip_str}")
+        pass # 繼續執行以返回 ip_str
+    
+    return ip_str
+
 # 初始化 Limiter
-limiter = Limiter(key_func=get_remote_address, default_limits=["5/minute"]) # 預設限制，可依需求調整
+limiter = Limiter(key_func=custom_key_func, default_limits=["5/minute"]) # 使用自訂的 key_func
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
