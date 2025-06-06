@@ -253,8 +253,8 @@ async def get_all_stations_overview(
                 f"分頁: skip={skip}, limit={limit}"
             ]
             query = {
-                "Location.PositionLat": {"$gte": min_lat, "$lte": max_lat}, # Assuming geo fields are flat
-                "Location.PositionLon": {"$gte": min_lon, "$lte": max_lon}
+                "PositionLat": {"$gte": min_lat, "$lte": max_lat}, # 使用頂層欄位
+                "PositionLon": {"$gte": min_lon, "$lte": max_lon}  # 使用頂層欄位
             }
         elif any(v is not None for v in [min_lat, min_lon, max_lat, max_lon]):
             raise HTTPException(
