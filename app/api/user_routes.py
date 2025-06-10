@@ -20,7 +20,8 @@ from app.services.email_service import ( # Updated import path
     send_email_async,
     create_verification_email_content,
     # create_password_reset_email_content, # 改用 OTP 模板
-    create_password_reset_otp_email_content # 引入 OTP 模板函數
+    create_password_reset_otp_email_content, # 引入 OTP 模板函數
+    create_binding_otp_email_content
 )
 from app.database import mongodb as db_provider # Import the module itself
 from app.models.user import EmailVerificationRequest, CompleteRegistrationRequest # 引入新的 Pydantic 模型
@@ -198,36 +199,129 @@ async def login_user(
 async def request_bind(
     type: str = Form(..., description="'phone' 或 'email'"),
     value: str = Form(..., description="手機號碼或電子郵件地址"),
-    current_user: Dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
-    if db_provider.users_collection is None:
-        raise HTTPException(status_code=503, detail="用戶資料庫服務未初始化")
+    if db_provider.users_collection is None or db_provider.otp_records_collection is None:
+        raise HTTPException(status_code=503, detail="資料庫服務未初始化")
+
     bind_type = type
     bind_value = value
+    now = datetime.now()
+
     if bind_type not in ["phone", "email"]:
         raise HTTPException(status_code=400, detail="無效的綁定類型")
-    existing_user = await db_provider.users_collection.find_one({bind_type: bind_value})
-    if existing_user and existing_user["user_id"] != current_user["user_id"]:
-        raise HTTPException(status_code=400, detail=f"此 {bind_type} 已被其他帳號綁定")
-    print(f"[綁定請求] 類型: {bind_type}, 值: {bind_value}, 用戶ID: {current_user['user_id']}")
-    return {"status": "success", "msg": "綁定請求已收到 (OTP功能暫未啟用，請使用測試驗證碼)"}
+
+    # 檢查目標 email/phone 是否已被其他已驗證用戶綁定
+    query_field = "email" if bind_type == "email" else "phone"
+    existing_user_doc = await db_provider.users_collection.find_one({query_field: bind_value})
+
+    if existing_user_doc and existing_user_doc["user_id"] != current_user.user_id:
+        is_verified_field = "is_email_verified" if bind_type == "email" else "is_phone_verified"
+        if existing_user_doc.get(is_verified_field, False):
+            raise HTTPException(status_code=400, detail=f"此 {bind_type} 已被其他帳號驗證綁定")
+
+    # 產生 OTP
+    otp_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+    otp_expires_at = now + timedelta(minutes=10) # OTP 10 分鐘後過期
+
+    otp_record = {
+        "user_id": current_user.user_id,
+        "target_identifier": bind_value,
+        "type": bind_type,
+        "otp_code": otp_code,
+        "created_at": now,
+        "expires_at": otp_expires_at,
+        "is_used": False
+    }
+    await db_provider.otp_records_collection.insert_one(otp_record)
+    print(f"[綁定請求] OTP 記錄已創建: UserID {current_user.user_id}, Type {bind_type}, Target {bind_value}")
+
+    if bind_type == "email":
+        email_subject = "Volticar 帳號綁定驗證碼"
+        # 使用 current_user.username 或 current_user.email 作為問候語中的名字
+        username_or_email = current_user.username if current_user.username else current_user.email
+        html_content = create_binding_otp_email_content(username_or_email, otp_code, "電子郵件")
+        email_sent = await send_email_async(bind_value, email_subject, html_content)
+        if email_sent:
+            return {"status": "success", "msg": f"驗證碼已發送至 {bind_value}，請查收。"}
+        else:
+            # 即使郵件發送失敗，OTP 記錄也已創建，用戶仍可嘗試（例如，如果他們知道 OTP 或郵件延遲）
+            # 但應提示用戶郵件發送可能存在問題
+            print(f"警告：為 Email {bind_value} 發送綁定 OTP 郵件失敗。")
+            raise HTTPException(status_code=500, detail="發送驗證郵件失敗，但您的請求已記錄。請稍後再試或聯繫客服。")
+    elif bind_type == "phone":
+        # 目前 SMS 功能未實現
+        print(f"[綁定請求] 手機綁定 OTP: {otp_code} (SMS 功能待實現)")
+        return {"status": "success", "msg": "手機綁定請求已收到 (SMS 功能暫未啟用，請使用測試驗證碼 123456，或後端日誌中的OTP)"}
+
+    return {"status": "error", "msg": "未知的綁定類型處理錯誤"} # 理論上不會執行到這裡
 
 @router.post("/verify-bind", response_model=Dict[str, Any])
 async def verify_binding(
     type: str = Form(..., description="'phone' 或 'email'"),
     value: str = Form(..., description="手機號碼或電子郵件地址"),
     otp_code: str = Form(..., description="收到的驗證碼"),
-    current_user: Dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
+    if db_provider.users_collection is None or db_provider.otp_records_collection is None:
+        raise HTTPException(status_code=503, detail="資料庫服務未初始化")
+
     bind_type = type
     bind_value = value
+    now = datetime.now()
+
     if bind_type not in ["phone", "email"]:
         raise HTTPException(status_code=400, detail="無效的綁定類型")
-    print(f"[驗證綁定] 類型: {bind_type}, 值: {bind_value}, 驗證碼: {otp_code}, 用戶ID: {current_user['user_id']}")
-    if otp_code != "123456":
-         raise HTTPException(status_code=400, detail="驗證碼錯誤 (測試模式，請使用 123456)")
-    print(f"驗證成功 (測試模式)，用戶 {current_user['user_id']} 的 {bind_type} ({bind_value}) 未實際更新資料庫。")
-    return {"status": "success", "msg": f"{bind_type} 驗證成功 (測試模式)"}
+
+    # 測試模式：如果 OTP 是 123456 且類型是 phone (因為 SMS 未發送)
+    if bind_type == "phone" and otp_code == "123456":
+        print(f"警告：手機綁定使用測試驗證碼 123456 進行。")
+        # 模擬 OTP 記錄查找成功
+        otp_valid = True
+    else:
+        # 從 OTPRecords 查找有效的 OTP
+        otp_record = await db_provider.otp_records_collection.find_one({
+            "user_id": current_user.user_id,
+            "target_identifier": bind_value,
+            "type": bind_type,
+            "otp_code": otp_code,
+            "is_used": False,
+            "expires_at": {"$gt": now}
+        })
+        otp_valid = otp_record is not None
+
+    if not otp_valid:
+        raise HTTPException(status_code=400, detail="驗證碼錯誤、已失效或不存在。")
+
+    # 更新使用者資料
+    update_data = {"updated_at": now}
+    if bind_type == "email":
+        update_data["email"] = bind_value
+        update_data["is_email_verified"] = True
+    elif bind_type == "phone":
+        update_data["phone"] = bind_value
+        update_data["is_phone_verified"] = True # 假設此欄位存在
+
+    update_result = await db_provider.users_collection.update_one(
+        {"user_id": current_user.user_id},
+        {"$set": update_data}
+    )
+
+    if update_result.modified_count == 0:
+        # 可能是用戶不存在或資料無變化，但前者不太可能因為 current_user 已驗證
+        print(f"警告：更新用戶 {current_user.user_id} 的 {bind_type} 綁定資訊時，modified_count 為 0。")
+        # 即使如此，OTP 仍應標記為已使用
+        # raise HTTPException(status_code=500, detail="更新用戶綁定資訊失敗。")
+
+    # 將 OTP 標記為已使用 (僅在非測試手機綁定情況下，或測試手機綁定也應模擬此操作)
+    if not (bind_type == "phone" and otp_code == "123456"): # 如果不是測試手機碼
+        await db_provider.otp_records_collection.update_one(
+            {"_id": otp_record["_id"]}, # otp_record 來自上面 find_one
+            {"$set": {"is_used": True}}
+        )
+    
+    print(f"用戶 {current_user.user_id} 的 {bind_type} ({bind_value}) 已成功驗證並綁定。")
+    return {"status": "success", "msg": f"{bind_type.capitalize()} 已成功綁定。"}
 
 # --- Email 驗證端點 (使用 pending_verifications) ---
 @router.get("/verify-email", response_class=HTMLResponse, summary="驗證電子郵件地址 (返回 HTML)")
@@ -688,9 +782,34 @@ async def login_with_google(
             email_user = await db_provider.users_collection.find_one({"email": email})
             if email_user:
                 if email_user.get("login_type") == "google":
-                    await db_provider.users_collection.update_one({"_id": email_user["_id"]}, {"$set": {"google_id": google_id, "last_login": datetime.now()}})
+                    # If the email is already associated with a Google account,
+                    # ensure the google_id matches or update it if it's missing for this specific google_id.
+                    # This case implies the user might be trying to log in with a Google account
+                    # that has the same email but perhaps a different underlying Google profile ID,
+                    # or the google_id was not stored previously for this specific user.
+                    if email_user.get("google_id") and email_user.get("google_id") != google_id:
+                        # This is a rare case: same email, different google_id.
+                        # Could be an attempt to link a different Google account to an existing Volticar Google account via email.
+                        # Or, the user somehow has two Google accounts with the same primary email.
+                        # For now, treat as a conflict if google_ids don't match.
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT,
+                            detail="此電子郵件已與另一個Google帳號關聯。"
+                        )
+                    # If google_id matches or was missing and now we can set it:
+                    await db_provider.users_collection.update_one(
+                        {"_id": email_user["_id"]},
+                        {"$set": {"google_id": google_id, "last_login": datetime.now()}}
+                    )
                 elif email_user.get("login_type") == "normal":
-                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="此郵箱已使用其他登入方式註冊，請使用原登入方式或聯繫客服綁定帳號")
+                    # Email is registered as a normal account, guide user to bind.
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT, # 409 Conflict is more appropriate
+                        detail={
+                            "code": "ACCOUNT_EXISTS_NORMAL_LOGIN_REQUIRED_FOR_BINDING",
+                            "msg": "此 Email 已被一般帳號註冊。若要將 Google 帳號與其綁定，請先用該 Email 和密碼登入後，再從帳號設定中進行綁定。"
+                        }
+                    )
                 access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
                 access_token = create_access_token(data={"sub": email_user["user_id"]}, expires_delta=access_token_expires)
                 return {"status": "success", "msg": "Google登入成功", "user_id": email_user["user_id"], "access_token": access_token, "token_type": "bearer"}
@@ -742,3 +861,109 @@ async def check_username_exists(username: str):
         return {"status": "success", "msg": "使用者名稱已被使用", "exists": True}
     else:
         return {"status": "success", "msg": "使用者名稱可使用", "exists": False}
+
+# --- 新增：帳號綁定相關端點 ---
+
+class LinkGoogleAccountRequest(BaseModel):
+    google_id: str
+    google_email: EmailStr # Email from Google to check against existing accounts
+
+@router.post("/link-google-account", response_model=Dict[str, Any], summary="將現有帳號綁定Google帳號")
+async def link_google_account(
+    request_data: LinkGoogleAccountRequest,
+    current_user: User = Depends(get_current_user)
+):
+    if db_provider.users_collection is None:
+        raise HTTPException(status_code=503, detail="用戶資料庫服務未初始化")
+
+    google_id_to_link = request_data.google_id
+    google_email_to_link = request_data.google_email
+
+    # 1. 檢查此 google_id 是否已被其他帳號綁定
+    existing_google_user = await db_provider.users_collection.find_one({"google_id": google_id_to_link})
+    if existing_google_user and existing_google_user["user_id"] != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="此 Google 帳號已被其他 Volticar 帳號綁定。"
+        )
+
+    # 2. 檢查此 Google Email 是否已被一個不同的 "normal" 帳號註冊
+    # (如果 Google Email 和當前用戶的 Email 相同，則此檢查無關緊要)
+    if google_email_to_link != current_user.email:
+        other_user_with_google_email = await db_provider.users_collection.find_one({"email": google_email_to_link})
+        if other_user_with_google_email and \
+           other_user_with_google_email["user_id"] != current_user.user_id and \
+           other_user_with_google_email.get("login_type") == "normal" and \
+           not other_user_with_google_email.get("google_id"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"電子郵件 {google_email_to_link} 已被另一個一般帳號註冊。如果您擁有該帳號，請先登入該帳號再嘗試綁定不同的 Google 帳號。"
+            )
+            
+    # 3. 如果當前用戶已有 google_id，且與要綁定的不同，則提示錯誤
+    if current_user.google_id and current_user.google_id != google_id_to_link:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="您的帳號已綁定另一個 Google 帳號。"
+        )
+
+    # 4. 更新當前用戶的 google_id
+    #    同時，如果用戶的 login_type 是 "normal"，可以考慮是否要更新，或保持不變允許雙重登入。
+    #    為了簡單起見，這裡只更新 google_id。如果 email 也需要更新以匹配 Google email，需額外處理。
+    update_result = await db_provider.users_collection.update_one(
+        {"user_id": current_user.user_id},
+        {"$set": {"google_id": google_id_to_link, "updated_at": datetime.now()}}
+    )
+
+    if update_result.modified_count == 0 and not current_user.google_id == google_id_to_link : # No change if already linked to same google_id
+        print(f"警告：嘗試為用戶 {current_user.user_id} 綁定 Google ID {google_id_to_link} 時，modified_count 為 0。")
+        # 這可能是因為 current_user.user_id 不存在，但 Depends(get_current_user) 應該已經處理了
+        raise HTTPException(status_code=500, detail="綁定 Google 帳號失敗，請稍後再試。")
+
+    return {"status": "success", "msg": "Google 帳號已成功綁定。"}
+
+
+class SetLoginPasswordRequest(BaseModel):
+    new_password: str = Form(..., min_length=8)
+
+@router.post("/set-login-password", response_model=Dict[str, Any], summary="為Google登入用戶設定登入密碼")
+async def set_login_password(
+    request_data: SetLoginPasswordRequest,
+    current_user: User = Depends(get_current_user)
+):
+    if db_provider.users_collection is None:
+        raise HTTPException(status_code=503, detail="用戶資料庫服務未初始化")
+
+    # 此功能主要針對 login_type="google" 且尚未設定密碼的用戶
+    # 但也可以允許任何已登入用戶設定或更改其密碼（如果他們忘記了舊密碼，應走忘記密碼流程）
+    # 這裡簡化為：任何已登入用戶都可以透過此端點設定/更新其密碼
+    # if current_user.login_type != "google" and current_user.password_hash:
+    #     raise HTTPException(status_code=400, detail="此帳號已有密碼，若需更改請使用修改密碼功能。")
+
+    hashed_password = get_password_hash(request_data.new_password)
+    
+    update_fields = {
+        "password_hash": hashed_password,
+        "updated_at": datetime.now()
+    }
+    
+    # 如果原先是純 Google 帳號，設定密碼後，login_type 可能需要調整
+    # 例如，可以保持 login_type="google"，但客戶端和 /login 端點需要知道
+    # password_hash 非空表示也可以用密碼登入。
+    # 或者，可以新增一個 login_type 如 "google_and_normal" 或 "hybrid"。
+    # 暫時不更改 login_type，依賴 password_hash 是否存在來判斷。
+    # if current_user.login_type == "google" and not current_user.password_hash:
+    #    update_fields["login_type"] = "google_with_password" # 示例性修改
+
+    update_result = await db_provider.users_collection.update_one(
+        {"user_id": current_user.user_id},
+        {"$set": update_fields}
+    )
+
+    if update_result.modified_count == 0:
+        # 可能是密碼未改變，或者用戶不存在（不太可能）
+        print(f"警告：為用戶 {current_user.user_id} 設定密碼時，modified_count 為 0。")
+        # 如果密碼與舊密碼相同，modified_count 也可能為0，這不一定是錯誤
+        # return {"status": "info", "msg": "新密碼與舊密碼相同，未做更改。"}
+
+    return {"status": "success", "msg": "登入密碼已成功設定/更新。"}
