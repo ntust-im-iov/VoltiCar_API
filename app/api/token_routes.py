@@ -1,12 +1,21 @@
-from fastapi import APIRouter, HTTPException, status, Body, Form
+from fastapi import APIRouter, HTTPException, status, Body, Form, Query, Request
 from typing import Dict, Optional, Any
 from datetime import datetime, timedelta
 from pydantic import BaseModel
+import httpx # 使用 httpx 進行異步 HTTP 請求
+import os
+import json
+import aiofiles # 用於異步檔案操作
+import logging # 引入日誌模組
 
 from app.utils.auth import create_access_token
 from app.database import mongodb as db_provider # Import the module itself
 
 router = APIRouter(prefix="/tokens", tags=["令牌"])
+logger = logging.getLogger(__name__) # 獲取當前模組的 logger
+
+DATA_DIR = "data"
+USER_MAPPINGS_FILE = os.path.join(DATA_DIR, "user_github_mappings.json")
 
 # Pydantic 模型
 class TokenRequest(BaseModel):
@@ -145,4 +154,199 @@ async def save_token(
     return {
         "status": "success",
         "msg": "令牌保存成功"
+    }
+
+# GitHub OAuth 回呼端點
+@router.get("/github/callback", response_model=Dict[str, Any])
+async def github_callback(
+    code: Optional[str] = Query(None, description="GitHub 提供的臨時授權碼"),
+    state: Optional[str] = Query(None, description="用於防止 CSRF 攻擊並傳遞用戶狀態的唯一字串")
+):
+    """
+    GitHub OAuth 回呼端點。
+    接收 GitHub 重新導向時提供的臨時授權碼和狀態。
+    用授權碼交換 access token，獲取 GitHub 用戶名，
+    並將 state、access_token 和 github_username 寫入 user_github_mappings.json。
+    """
+    if not code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="未提供授權碼 (code)"
+        )
+    if not state:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="未提供狀態參數 (state)"
+        )
+
+    client_id = os.getenv("GITHUB_CLIENT_ID")
+    client_secret = os.getenv("GITHUB_CLIENT_SECRET")
+
+    if not client_id or not client_secret:
+        logger.error("GitHub OAuth Client ID 或 Secret 未在環境變數中設定。")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="GitHub OAuth Client ID 或 Secret 未設定"
+        )
+    logger.info("成功獲取 GitHub OAuth Client ID 和 Secret。")
+
+    # 1. 用 code 交換 access token
+    logger.info(f"準備使用 code 交換 access token。Code: {code[:10]}... (為安全截斷顯示)")
+    token_url = "https://github.com/login/oauth/access_token"
+    redirect_uri = os.getenv("GITHUB_CALLBACK_URL")
+    if not redirect_uri:
+        logger.error("GITHUB_CALLBACK_URL 未在環境變數中設定。")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="GitHub 回呼 URL 未設定"
+        )
+    
+    payload = {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "code": code,
+        "redirect_uri": redirect_uri
+    }
+    headers = {"Accept": "application/json"}
+
+    access_token = None
+    try:
+        async with httpx.AsyncClient() as client:
+            logger.info(f"向 {token_url} 發送 POST 請求以交換 token。")
+            response = await client.post(token_url, data=payload, headers=headers)
+            response.raise_for_status()
+            token_data = response.json()
+            access_token = token_data.get("access_token")
+            if access_token:
+                logger.info("成功從 GitHub 交換到 access_token。")
+            else:
+                logger.error(f"未能從 GitHub 獲取 access_token。收到的回應: {token_data}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"未能從 GitHub 獲取 access_token: {token_data}"
+                )
+    except httpx.HTTPStatusError as e:
+        logger.error(f"交換 GitHub access token 失敗: {e.response.status_code} - {e.response.text}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"交換 GitHub access token 失敗: {e.response.text}"
+        )
+    except httpx.RequestError as e:
+        logger.error(f"請求 GitHub access token 時發生網路錯誤: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"請求 GitHub access token 時發生錯誤: {str(e)}"
+        )
+    except json.JSONDecodeError as e:
+        logger.error(f"解析 GitHub token 交換回應時 JSON 解碼失敗: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"解析 GitHub token 交換回應失敗: {str(e)}"
+        )
+
+
+    # 2. 用 access token 獲取使用者資訊
+    logger.info("準備使用 access_token 獲取 GitHub 用戶資訊。")
+    user_url = "https://api.github.com/user"
+    auth_headers = {
+        "Authorization": f"Bearer {access_token}", # Changed from "token" to "Bearer" for wider compatibility, though "token" also works.
+        "Accept": "application/vnd.github.v3+json"
+    }
+    
+    github_username = None
+    try:
+        async with httpx.AsyncClient() as client:
+            logger.info(f"向 {user_url} 發送 GET 請求以獲取用戶資訊。")
+            user_response = await client.get(user_url, headers=auth_headers)
+            user_response.raise_for_status()
+            user_info = user_response.json()
+            github_username = user_info.get("login")
+            if github_username:
+                logger.info(f"成功從 GitHub 獲取用戶名: {github_username}")
+            else:
+                logger.error(f"未能從 GitHub 獲取用戶名。收到的用戶資訊: {user_info}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="未能從 GitHub 獲取用戶名"
+                )
+    except httpx.HTTPStatusError as e:
+        logger.error(f"獲取 GitHub 用戶資訊失敗: {e.response.status_code} - {e.response.text}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"獲取 GitHub 用戶資訊失敗: {e.response.text}"
+        )
+    except httpx.RequestError as e:
+        logger.error(f"請求 GitHub 用戶資訊時發生網路錯誤: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"請求 GitHub 用戶資訊時發生錯誤: {str(e)}"
+        )
+    except json.JSONDecodeError as e:
+        logger.error(f"解析 GitHub 用戶資訊回應時 JSON 解碼失敗: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"解析 GitHub 用戶資訊回應失敗: {str(e)}"
+        )
+
+    # 3. 將 state, access_token, github_username 寫入 user_github_mappings.json
+    logger.info(f"準備將映射資訊寫入 {USER_MAPPINGS_FILE}。State: {state}")
+    
+    # 確保 data 目錄存在
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        logger.info(f"目錄 {DATA_DIR} 已確認存在或已創建。")
+    except OSError as e:
+        logger.error(f"創建目錄 {DATA_DIR} 失敗: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"創建數據目錄失敗: {str(e)}"
+        )
+
+    mappings = {}
+    try:
+        logger.info(f"嘗試讀取現有的 {USER_MAPPINGS_FILE}...")
+        async with aiofiles.open(USER_MAPPINGS_FILE, mode="r", encoding="utf-8") as f:
+            content = await f.read()
+            if content:
+                mappings = json.loads(content)
+                logger.info(f"成功讀取並解析 {USER_MAPPINGS_FILE}。")
+            else:
+                logger.info(f"{USER_MAPPINGS_FILE} 為空。")
+    except FileNotFoundError:
+        logger.info(f"{USER_MAPPINGS_FILE} 不存在，將會創建新檔案。")
+    except json.JSONDecodeError as e:
+        logger.error(f"解析 {USER_MAPPINGS_FILE} 時發生 JSONDecodeError: {str(e)}。檔案內容將被覆蓋。", exc_info=True)
+    except Exception as e:
+        logger.error(f"讀取 {USER_MAPPINGS_FILE} 時發生未知錯誤: {str(e)}", exc_info=True)
+
+    mappings[state] = {
+        "access_token": access_token,
+        "github_username": github_username,
+        "timestamp": datetime.now().isoformat()
+    }
+
+    try:
+        logger.info(f"正在將更新後的映射寫入 {USER_MAPPINGS_FILE}...")
+        async with aiofiles.open(USER_MAPPINGS_FILE, mode="w", encoding="utf-8") as f:
+            await f.write(json.dumps(mappings, indent=4, ensure_ascii=False))
+        logger.info(f"成功將映射寫入 {USER_MAPPINGS_FILE}。")
+    except IOError as e:
+        logger.error(f"寫入 {USER_MAPPINGS_FILE} 失敗: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"寫入 user_github_mappings.json 失敗: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"寫入 {USER_MAPPINGS_FILE} 時發生未知錯誤: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"寫入 user_github_mappings.json 時發生未知錯誤: {str(e)}"
+        )
+        
+    logger.info(f"GitHub OAuth 回呼處理完成。State: {state}, GitHub Username: {github_username}")
+    return {
+        "status": "success",
+        "message": "成功處理 GitHub OAuth 回呼並保存映射",
+        "github_username": github_username,
+        "state_key": state
     }
