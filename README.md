@@ -93,6 +93,7 @@ volticar_api/
 │       ├── auth.py         # 認證 (密碼哈希, JWT, 用戶依賴)
 │       └── helpers.py      # 其他輔助函數
 │
+├── data/                   # 數據目錄 (用於存放 user_github_mappings.json 等)
 ├── logs/                   # 日誌文件目錄 (由 logging 配置產生)
 ├── .dockerignore           # Docker 忽略文件
 ├── .gitignore              # Git 忽略文件
@@ -283,6 +284,40 @@ API 使用 FastAPI 自動生成交互式文檔。服務運行後，訪問 `/docs
             *   如果經常按其他欄位查詢，也應考慮為這些欄位建立索引。
 
 透過以上後端優化和前端的配合，可以顯著提升充電站地圖功能的效能和穩定性。
+
+## GitHub OAuth 2.0 整合
+
+本 API 提供了 GitHub OAuth 2.0 登入功能，允許用戶使用 GitHub 帳號進行身份驗證。
+
+### 主要步驟
+
+1.  **GitHub OAuth App 設定**:
+    *   在 GitHub 上創建一個 OAuth App，並設定 "Authorization callback URL" 為 `https://volticar.dynns.com:22000/tokens/github/callback`。
+
+2.  **環境變數**:
+    *   在 `.env` 檔案中設定以下環境變數：
+        *   `GITHUB_CLIENT_ID`: 您的 GitHub OAuth App 的 Client ID。
+        *   `GITHUB_CLIENT_SECRET`: 您的 GitHub OAuth App 的 Client Secret。
+        *   `GITHUB_CALLBACK_URL`: 您的 GitHub OAuth App 設定中使用的回呼 URL (應與 GitHub App 設定一致)。
+
+3.  **API 端點**:
+    *   `/tokens/github/callback`: 用於接收 GitHub OAuth 回呼的端點。
+
+4.  **Docker 設定**:
+    *   在 `docker-compose.yml` 中，確保 `api` 服務有以下卷映射，以使 API 能夠讀寫 GitHub OAuth 相關的資料：
+        ```yaml
+        volumes:
+          - ./data:/app/data
+        ```
+
+### Bot 端設定
+
+*   Bot 需要讀取 `user_github_mappings.json` 檔案，該檔案位於 API 專案的 `data` 目錄下。
+*   如果 Bot 也在 Docker 容器中運行，請確保 Bot 容器也映射了主機的 `data` 目錄。
+
+### 資料儲存
+
+*   GitHub OAuth 相關的資料 (access token, github username) 會儲存在 `data/user_github_mappings.json` 檔案中，以 `state` 作為鍵。
 
 ## Firebase 推播服務 (開發中)
 
