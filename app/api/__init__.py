@@ -65,3 +65,11 @@ try:
 except Exception as e:
     print(f"✗ 載入成就API路由時出錯: {str(e)}")
     traceback.print_exc(file=sys.stdout)
+
+try:
+    from app.api.github_webhook_routes import router as github_webhook_router
+    api_router.include_router(github_webhook_router, prefix="/github")
+    print("✓ GitHub Webhook API路由已載入")
+except Exception as e:
+    print(f"✗ 載入 GitHub Webhook API 路由時出錯: {str(e)}")
+    traceback.print_exc(file=sys.stdout)
