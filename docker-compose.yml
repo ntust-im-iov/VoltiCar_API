@@ -23,6 +23,7 @@ services:
       - ./app:/app/app
       - ./requirements.txt:/app/requirements.txt
       - ./logs:/app/logs # 保留日誌映射
+      - ./data:/app/data # 將 data 目錄映射到主機，用於存放 user_github_mappings.json 等數據檔案
       - C:\Certbot:/etc/certs # 保留憑證映射，以防應用程式內部需要讀取
     extra_hosts: # 保留 extra_hosts
       - "volticar.dynns.com:192.168.1.102"
