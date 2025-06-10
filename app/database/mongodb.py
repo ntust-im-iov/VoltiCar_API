@@ -145,6 +145,7 @@ login_records_collection = None
 achievements_collection = None
 rewards_collection = None
 pending_verifications_collection = None
+otp_records_collection = None # Added for OTP records
 
 player_tasks_collection = None
 vehicle_definitions_collection = None # Corrected spelling from previous state
@@ -158,7 +159,7 @@ task_definitions_collection = None # Added for clarity, points to "TaskDefinitio
 async def initialize_db_and_collections():
     global client, volticar_db, charge_station_db, users_collection, login_records_collection
     # global vehicles_collection, tasks_collection, # Removed old ambiguous ones
-    global achievements_collection, rewards_collection, pending_verifications_collection
+    global achievements_collection, rewards_collection, pending_verifications_collection, otp_records_collection
     global player_tasks_collection, vehicle_definitions_collection, player_owned_vehicles_collection
     global item_definitions_collection, player_warehouse_items_collection, destinations_collection
     global game_sessions_collection, task_definitions_collection
@@ -185,6 +186,7 @@ async def initialize_db_and_collections():
         achievements_collection = volticar_db["Achievements"]
         rewards_collection = volticar_db["Rewards"]
         pending_verifications_collection = volticar_db["PendingVerifications"]
+        otp_records_collection = volticar_db["OTPRecords"] # Initialize OTPRecords collection
 
         player_tasks_collection = volticar_db["PlayerTasks"]
         player_warehouse_items_collection = volticar_db["PlayerWarehouseItems"]
@@ -235,6 +237,14 @@ async def initialize_db_and_collections():
         print("待驗證集合索引:")
         await safely_create_index(pending_verifications_collection, "email")
         await safely_create_index(pending_verifications_collection, "token", unique=True)
+
+        print("OTP 記錄集合索引:")
+        await safely_create_index(otp_records_collection, "user_id")
+        await safely_create_index(otp_records_collection, "target_identifier")
+        await safely_create_index(otp_records_collection, "type")
+        await safely_create_index(otp_records_collection, "otp_code")
+        await safely_create_index(otp_records_collection, "expires_at")
+        await safely_create_index(otp_records_collection, "is_used")
         
         print("MongoDB索引檢查完成!")
 
@@ -242,7 +252,7 @@ async def initialize_db_and_collections():
         print(f"設置數據庫、集合或執行索引/遷移時發生錯誤: {e}")
         # Reset all to None
         volticar_db = charge_station_db = users_collection = login_records_collection = None
-        achievements_collection = rewards_collection = pending_verifications_collection = None
+        achievements_collection = rewards_collection = pending_verifications_collection = otp_records_collection = None
         player_tasks_collection = vehicle_definitions_collection = player_owned_vehicles_collection = None
         item_definitions_collection = player_warehouse_items_collection = destinations_collection = None
         game_sessions_collection = task_definitions_collection = None
@@ -314,23 +324,32 @@ async def get_charge_station_collection(city=None):
 
 async def connect_and_initialize_db():
     global client
-    client = await connect_to_mongo()
+    # client = await connect_to_mongo() # Original line
+    # Let connect_to_mongo handle setting the global client
+    await connect_to_mongo()
+
+    print(f"DEBUG: connect_and_initialize_db - client is {client} (type: {type(client)}) before if/else logic.")
+
     if client:
+        print("DEBUG: connect_and_initialize_db - Entering 'if client:' block.")
         await initialize_db_and_collections()
-        await print_connection_info() 
+        await print_connection_info()
+        print(f"DEBUG: connect_and_initialize_db - client is {client} (type: {type(client)}) at the end of 'if client:' block.")
     else:
+        print(f"DEBUG: connect_and_initialize_db - Entering 'else:' block because client is {client} (type: {type(client)}).")
+        # Reset all global collection variables to None
         global volticar_db, charge_station_db, users_collection, login_records_collection
-        global achievements_collection, rewards_collection, pending_verifications_collection
+        global achievements_collection, rewards_collection, pending_verifications_collection, otp_records_collection
         global player_tasks_collection, vehicle_definitions_collection, player_owned_vehicles_collection
         global item_definitions_collection, player_warehouse_items_collection, destinations_collection
         global game_sessions_collection, task_definitions_collection
 
         volticar_db = charge_station_db = users_collection = login_records_collection = None
-        achievements_collection = rewards_collection = pending_verifications_collection = None
+        achievements_collection = rewards_collection = pending_verifications_collection = otp_records_collection = None
         player_tasks_collection = vehicle_definitions_collection = player_owned_vehicles_collection = None
         item_definitions_collection = player_warehouse_items_collection = destinations_collection = None
         game_sessions_collection = task_definitions_collection = None
-        print("警告: 無法連接到MongoDB，API將在無數據庫模式下運行")
+        print("警告: 無法連接到MongoDB，API將在無數據庫模式下運行 (collections have been reset to None).")
 
 async def close_mongo_connection():
     global client

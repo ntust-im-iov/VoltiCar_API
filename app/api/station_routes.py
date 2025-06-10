@@ -133,7 +133,7 @@ async def get_stations_by_city(
         logger.info(f"充電站資訊加載完成並轉換為簡化摘要模型")
 
         if redis: 
-            await set_cache(redis, cache_key, [s.model_dump() for s in response_data]) # 使用 model_dump()
+            await set_cache(redis, cache_key, [s.dict() for s in response_data], expire=3600) # 改用 .dict() 並設定 TTL 為 3600 秒 (1 小時)
         
         return response_data
 
@@ -253,8 +253,8 @@ async def get_all_stations_overview(
                 f"分頁: skip={skip}, limit={limit}"
             ]
             query = {
-                "Location.PositionLat": {"$gte": min_lat, "$lte": max_lat}, # Assuming geo fields are flat
-                "Location.PositionLon": {"$gte": min_lon, "$lte": max_lon}
+                "PositionLat": {"$gte": min_lat, "$lte": max_lat}, # 使用頂層欄位
+                "PositionLon": {"$gte": min_lon, "$lte": max_lon}  # 使用頂層欄位
             }
         elif any(v is not None for v in [min_lat, min_lon, max_lat, max_lon]):
             raise HTTPException(
@@ -317,7 +317,7 @@ async def get_all_stations_overview(
         logger.info(f"從 AllChargingStations 集合獲取了 {count} 個充電站的概覽資訊並轉換為簡化摘要 (分頁 skip={skip}, limit={limit})。")
 
         if redis:
-            await set_cache(redis, cache_key, [s.model_dump() for s in response_data]) # Use model_dump()
+            await set_cache(redis, cache_key, [s.dict() for s in response_data], expire=3600) # Use .dict() 並設定 TTL 為 3600 秒 (1 小時)
             
         return response_data
 
