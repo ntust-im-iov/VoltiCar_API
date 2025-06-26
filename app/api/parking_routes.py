@@ -121,17 +121,18 @@ async def get_parkings_by_city(
             if isinstance(position_data, dict):
                 position_obj = CarParkPosition(**position_data)
 
-            # 處理地址數據
+            # 處理地址數據 - 支持字符串和字典格式
             address_raw_from_db = parking_data.get("Address")
             address_input_for_summary = None
-            if isinstance(address_raw_from_db, dict):
+            if isinstance(address_raw_from_db, str):
+                # 直接使用字符串地址
                 address_input_for_summary = address_raw_from_db
-            elif address_raw_from_db is not None:
-                logger.error(
-                    f"CarParkID {parking_data.get('CarParkID')} in city {city}: Invalid Address data from DB. "
-                    f"Expected dict or None, got {type(address_raw_from_db)}: {repr(address_raw_from_db)}. "
-                    f"Setting Address to None for ParkingSummary."
+            elif isinstance(address_raw_from_db, dict):
+                # 如果是字典格式，嘗試提取中文地址
+                address_input_for_summary = address_raw_from_db.get("Zh_tw") or str(
+                    address_raw_from_db
                 )
+            # 如果是 None 就保持為 None
 
             summary = ParkingSummary(
                 CarParkID=parking_data.get("CarParkID"),
@@ -330,18 +331,18 @@ async def get_all_parkings_overview(
             if isinstance(position_data, dict):
                 position_obj = CarParkPosition(**position_data)
 
-            # Correctly extract address data
+            # 處理地址數據 - 支持字符串和字典格式
             address_raw_from_db = parking_data.get("Address")
-
             address_input_for_summary = None
-            if isinstance(address_raw_from_db, dict):
+            if isinstance(address_raw_from_db, str):
+                # 直接使用字符串地址
                 address_input_for_summary = address_raw_from_db
-            elif address_raw_from_db is not None:
-                logger.error(
-                    f"CarParkID {parking_data.get('CarParkID')}: Invalid Address data from DB for overview. "
-                    f"Expected dict or None, got {type(address_raw_from_db)}: {repr(address_raw_from_db)}. "
-                    f"Setting Address to None for ParkingSummary."
+            elif isinstance(address_raw_from_db, dict):
+                # 如果是字典格式，嘗試提取中文地址
+                address_input_for_summary = address_raw_from_db.get("Zh_tw") or str(
+                    address_raw_from_db
                 )
+            # 如果是 None 就保持為 None
 
             summary = ParkingSummary(
                 CarParkID=parking_data.get("CarParkID"),
