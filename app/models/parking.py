@@ -21,7 +21,7 @@ class ParkingSpace(BaseModel):
     CarParkID: str
     CarParkName: CarParkName
     Address: Optional[LocationAddress] = None
-    CarParkPosition: Optional[CarParkPosition] = None
+    CarParkPosition: Optional["CarParkPosition"] = None
     FareDescription: Optional[str] = None
 
     model_config = {"from_attributes": True}
@@ -40,8 +40,8 @@ class ParkingSpaceCreate(BaseModel):
 class ParkingSummary(BaseModel):
     CarParkID: str
     CarParkName: Optional[str] = None  # 這裡直接返回中文名稱字串
-    Address: Optional[LocationAddress] = None
-    CarParkPosition: Optional[CarParkPosition] = None
+    Address: Optional[str] = None  # 修改為接受字符串格式的地址
+    CarParkPosition: Optional["CarParkPosition"] = None
     FareDescription: Optional[str] = None
 
     model_config = {"from_attributes": True}
