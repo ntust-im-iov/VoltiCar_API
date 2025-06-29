@@ -119,7 +119,21 @@ async def get_parkings_by_city(
             position_data = parking_data.get("CarParkPosition")
             position_obj = None
             if isinstance(position_data, dict):
-                position_obj = CarParkPosition(**position_data)
+                # 過濾掉 None 值，只保留有效的位置資料
+                filtered_position_data = {
+                    k: v
+                    for k, v in position_data.items()
+                    if v is not None and k in ["PositionLat", "PositionLon"]
+                }
+                # 只有當有有效資料時才創建 CarParkPosition 物件
+                if filtered_position_data:
+                    try:
+                        position_obj = CarParkPosition(**filtered_position_data)
+                    except Exception as e:
+                        logger.warning(
+                            f"CarParkPosition 驗證失敗，ID: {parking_data.get('CarParkID')}, 錯誤: {e}"
+                        )
+                        position_obj = None
 
             # 處理地址數據 - 支持字符串和字典格式
             address_raw_from_db = parking_data.get("Address")
@@ -329,7 +343,21 @@ async def get_all_parkings_overview(
             position_data = parking_data.get("CarParkPosition")
             position_obj = None
             if isinstance(position_data, dict):
-                position_obj = CarParkPosition(**position_data)
+                # 過濾掉 None 值，只保留有效的位置資料
+                filtered_position_data = {
+                    k: v
+                    for k, v in position_data.items()
+                    if v is not None and k in ["PositionLat", "PositionLon"]
+                }
+                # 只有當有有效資料時才創建 CarParkPosition 物件
+                if filtered_position_data:
+                    try:
+                        position_obj = CarParkPosition(**filtered_position_data)
+                    except Exception as e:
+                        logger.warning(
+                            f"CarParkPosition 驗證失敗，ID: {parking_data.get('CarParkID')}, 錯誤: {e}"
+                        )
+                        position_obj = None
 
             # 處理地址數據 - 支持字符串和字典格式
             address_raw_from_db = parking_data.get("Address")
