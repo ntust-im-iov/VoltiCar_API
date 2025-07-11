@@ -9,6 +9,7 @@ api_router = APIRouter()
 try:
     # 嘗試導入所有路由模塊
     from app.api.user_routes import router as user_router
+
     api_router.include_router(user_router)
     print("✓ 用戶API路由已載入")
 except Exception as e:
@@ -17,6 +18,7 @@ except Exception as e:
 
 try:
     from app.api.station_routes import router as station_router
+
     api_router.include_router(station_router)
     print("✓ 充電站API路由已載入")
 except Exception as e:
@@ -24,7 +26,17 @@ except Exception as e:
     traceback.print_exc(file=sys.stdout)
 
 try:
+    from app.api.parking_routes import router as parking_router
+
+    api_router.include_router(parking_router)
+    print("✓ 停車場API路由已載入")
+except Exception as e:
+    print(f"✗ 載入停車場API路由時出錯: {str(e)}")
+    traceback.print_exc(file=sys.stdout)
+
+try:
     from app.api.vehicle_routes import router as vehicle_router
+
     api_router.include_router(vehicle_router)
     print("✓ 車輛API路由已載入")
 except Exception as e:
@@ -34,8 +46,13 @@ except Exception as e:
 try:
     # Modified import for new task routers
     from app.api.task_routes import task_definition_router, player_task_router
-    api_router.include_router(task_definition_router, prefix="/api/v1") # Add prefix here or in main.py
-    api_router.include_router(player_task_router, prefix="/api/v1")   # Add prefix here or in main.py
+
+    api_router.include_router(
+        task_definition_router, prefix="/api/v1"
+    )  # Add prefix here or in main.py
+    api_router.include_router(
+        player_task_router, prefix="/api/v1"
+    )  # Add prefix here or in main.py
     print("✓ 任務定義API路由已載入 (task_definition_router)")
     print("✓ 玩家任務API路由已載入 (player_task_router)")
 except Exception as e:
@@ -43,8 +60,11 @@ except Exception as e:
     traceback.print_exc(file=sys.stdout)
 
 try:
-    from app.api.game_setup_routes import game_setup_router # New game setup router
-    api_router.include_router(game_setup_router, prefix="/api/v1") # Add prefix here or in main.py
+    from app.api.game_setup_routes import game_setup_router  # New game setup router
+
+    api_router.include_router(
+        game_setup_router, prefix="/api/v1"
+    )  # Add prefix here or in main.py
     print("✓ 遊戲設定API路由已載入 (game_setup_router)")
 except Exception as e:
     print(f"✗ 載入遊戲設定API路由時出錯: {str(e)}")
@@ -52,7 +72,10 @@ except Exception as e:
 
 try:
     from app.api.token_routes import router as token_router
-    api_router.include_router(token_router) # Assuming this router does not need /api/v1 prefix or handles it internally
+
+    api_router.include_router(
+        token_router
+    )  # Assuming this router does not need /api/v1 prefix or handles it internally
     print("✓ 令牌API路由已載入")
 except Exception as e:
     print(f"✗ 載入令牌API路由時出錯: {str(e)}")
@@ -60,6 +83,7 @@ except Exception as e:
 
 try:
     from app.api.achievement_routes import router as achievement_router
+
     api_router.include_router(achievement_router)
     print("✓ 成就API路由已載入")
 except Exception as e:
@@ -68,6 +92,7 @@ except Exception as e:
 
 try:
     from app.api.github_webhook_routes import router as github_webhook_router
+
     api_router.include_router(github_webhook_router, prefix="/github")
     print("✓ GitHub Webhook API路由已載入")
 except Exception as e:
