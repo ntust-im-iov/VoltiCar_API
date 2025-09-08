@@ -133,6 +133,11 @@ class TaskRewards(BaseModel):
     unlock_destination_ids: Optional[List[str]] = None
     Config = CommonConfig
 
+class TaskPickupItem(BaseModel):
+    item_id: str
+    quantity: int
+    Config = CommonConfig
+
 class TaskDefinition(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     task_id: str = Field(default_factory=lambda: str(uuid.uuid4()), unique=True, description="Custom unique task definition ID (UUID string)")
@@ -142,6 +147,7 @@ class TaskDefinition(BaseModel):
     type: str
     requirements: TaskRequirements
     rewards: TaskRewards
+    pickup_items: Optional[List[TaskPickupItem]] = Field(default=None, description="Items to be given to the player upon accepting the task")
     is_repeatable: bool = Field(default=False)
     repeat_cooldown_hours: Optional[int] = None
     availability_start_date: Optional[datetime] = None
