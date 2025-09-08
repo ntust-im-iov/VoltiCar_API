@@ -174,7 +174,7 @@ volticar_api/
 - `SECRET_KEY`: 用於 JWT 簽名的密鑰 (請使用強隨機字符串)。
 - `ALGORITHM`: JWT 簽名算法 (預設: HS256)。
 - `ACCESS_TOKEN_EXPIRE_MINUTES`: Access Token 有效期 (分鐘)。
-- `API_BASE_URL`: API 的基礎 URL，用於生成郵件中的驗證連結 (例如: `https://yourdomain.com` 或 `http://localhost:22000`)。
+- `API_BASE_URL`: API 的基礎 URL，用於生成郵件中的驗證連結 (例如: `https://yourdomain.com` 或 `https://volticar.dynns.com`)。
 - `MAIL_USERNAME`: SMTP 伺服器用戶名。
 - `MAIL_PASSWORD`: SMTP 伺服器密碼。
 - `MAIL_FROM`: 發件人 Email 地址。
@@ -292,7 +292,7 @@ API 使用 FastAPI 自動生成交互式文檔。服務運行後，訪問 `/docs
 ### 主要步驟
 
 1.  **GitHub OAuth App 設定**:
-    *   在 GitHub 上創建一個 OAuth App，並設定 "Authorization callback URL" 為 `https://volticar.dynns.com:22000/tokens/github/callback`。
+    *   在 GitHub 上創建一個 OAuth App，並設定 "Authorization callback URL" 為 `https://volticar.dynns.com/tokens/github/callback`。
 
 2.  **環境變數**:
     *   在 `.env` 檔案中設定以下環境變數：
