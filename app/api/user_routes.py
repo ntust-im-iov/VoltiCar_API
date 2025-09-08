@@ -91,8 +91,8 @@ async def request_email_verification(email: EmailStr = Form(...)):
         )
         print(f"已為 Email {email} 產生待驗證記錄。")
 
-    api_base_url = os.getenv("API_BASE_URL", "https://volticar.dynns.com:22000")
-    if api_base_url == "https://volticar.dynns.com:22000":
+    api_base_url = os.getenv("API_BASE_URL", "https://volticar.dynns.com")
+    if api_base_url == "https://volticar.dynns.com":
          print(f"警告：未設定 API_BASE_URL 環境變數，使用預設值: {api_base_url}")
 
     verification_link = f"{api_base_url}/users/verify-email?token={verification_token}"
