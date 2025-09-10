@@ -159,8 +159,11 @@ async def health_check():
 # 在這之後再導入API路由，這樣可以使用前面初始化的app
 try:
     from app.api import api_router
+    from app.api import game_routes  # 匯入新的遊戲路由
+
     # 包含API路由
     app.include_router(api_router)
+    app.include_router(game_routes.router, prefix="/api/v1/game", tags=["Game"])  # 包含遊戲路由
     print("API路由已成功載入")
 except Exception as e:
     print(f"載入API路由時出錯: {str(e)}")

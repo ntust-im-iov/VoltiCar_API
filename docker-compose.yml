@@ -65,3 +65,19 @@ networks:
 # 如果選擇了持久化 Redis 數據，則需要定義 volume
 # volumes:
 #   redis-data:
+
+  mongo-cli:
+    image: mongo
+    container_name: volticar-mongo-cli
+    volumes:
+      - ./insert_mock_data.js:/scripts/insert_mock_data.js
+    networks:
+      - volticar-network
+    entrypoint: >
+      /bin/bash -c "
+        echo 'Waiting for API to be ready...';
+        sleep 10;
+        mongo 'mongodb://Volticar:REMOVED_PASSWORD@59.126.6.46:27017/Volticar?authSource=admin' /scripts/insert_mock_data.js;
+      "
+    depends_on:
+      - api
