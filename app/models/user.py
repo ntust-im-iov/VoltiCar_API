@@ -59,8 +59,10 @@ class User(BaseModel):
     experience_points: int = Field(default=0)
     level: int = Field(default=1)
     currency_balance: int = Field(default=0)
+    carbon_points: int = Field(default=0)
     current_game_session_setup: Optional[CurrentGameSessionSetup] = None
     active_game_session_id: Optional[str] = None
+    last_check_in: Optional[Dict[str, Any]] = None
 
     reset_password_token: Optional[str] = None
     reset_password_token_expires_at: Optional[datetime] = None

@@ -16,3 +16,4 @@ slowapi==0.1.9
 redis==5.0.1
 httpx>=0.20.0 # 用於異步 HTTP 請求
 aiofiles>=0.7.0 # 用於異步檔案操作
+geopy>=2.2.0
