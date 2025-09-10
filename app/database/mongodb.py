@@ -459,3 +459,8 @@ async def close_mongo_connection():
     if client:
         client.close()
         print("MongoDB 連線已關閉")
+
+async def get_db():
+    if volticar_db is None:
+        raise Exception("Database is not initialized")
+    return volticar_db
