@@ -70,7 +70,7 @@ services:
       /bin/bash -c "
         echo 'Waiting for API to be ready...';
         sleep 10;
-        mongo 'mongodb://Volticar:REMOVED_PASSWORD@59.126.6.46:27017/Volticar?authSource=admin' /scripts/insert_mock_data.js;
+        mongosh 'mongodb://Volticar:REMOVED_PASSWORD@59.126.6.46:27017/Volticar?authSource=admin' --file /scripts/insert_mock_data.js;
       "
     depends_on:
       - api
