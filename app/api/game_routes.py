@@ -59,11 +59,11 @@ async def check_in_at_station(
     db = Depends(get_database),
     current_user: User = Depends(get_current_user)
 ):
-    station = await db.stations.find_one({"station_id": payload.station_id})
+    station = await db.Stations.find_one({"StationID": payload.station_id})
     if not station:
         raise HTTPException(status_code=404, detail="Station not found")
 
-    station_coords = (station['latitude'], station['longitude'])
+    station_coords = (station['PositionLat'], station['PositionLon'])
     user_coords = (payload.latitude, payload.longitude)
 
     distance = geodesic(station_coords, user_coords).meters
@@ -93,7 +93,7 @@ async def get_station_tasks(
         raise HTTPException(status_code=403, detail="User must be checked in at this station to get tasks.")
 
     # 2. Check cooldown
-    last_task_record = await db.player_station_tasks.find_one(
+    last_task_record = await db.PlayerStationTasks.find_one(
         {"user_id": current_user.user_id, "station_id": station_id},
         sort=[("generated_at", -1)]
     )
@@ -113,10 +113,10 @@ async def get_station_tasks(
     }
     new_task = GameTask(**new_task_data)
     
-    await db.game_tasks.insert_one(new_task.dict(by_alias=True))
+    await db.GameTasks.insert_one(new_task.dict(by_alias=True))
     
     # Record task generation time for cooldown
-    await db.player_station_tasks.insert_one({
+    await db.PlayerStationTasks.insert_one({
         "user_id": current_user.user_id,
         "station_id": station_id,
         "generated_at": datetime.now()
@@ -145,7 +145,7 @@ async def trigger_game_event(
     # 3. Create and store the event
     game_event = GameEvent(**selected_event_data)
     
-    await db.game_events.insert_one(game_event.dict(by_alias=True))
+    await db.GameEvents.insert_one(game_event.dict(by_alias=True))
 
     # Associate event with the game session
     await db.GameSessions.update_one(
@@ -202,7 +202,7 @@ async def resolve_game_event(
 async def get_shop_items(
     db = Depends(get_database)
 ):
-    items_cursor = db.shop_items.find()
+    items_cursor = db.ShopItems.find()
     items = await items_cursor.to_list(length=100) # Limit to 100 items
     return items
 
@@ -213,7 +213,7 @@ async def purchase_shop_item(
     current_user: User = Depends(get_current_user)
 ):
     # 1. Find the item and its price
-    item_to_purchase = await db.shop_items.find_one({"item_id": payload.item_id})
+    item_to_purchase = await db.ShopItems.find_one({"item_id": payload.item_id})
     if not item_to_purchase:
         raise HTTPException(status_code=404, detail="Item not found.")
 
@@ -231,7 +231,7 @@ async def purchase_shop_item(
 
     # 4. Add item to player's inventory
     # Using upsert to either add a new item or increment the quantity of an existing one
-    await db.player_items.update_one(
+    await db.PlayerItems.update_one(
         {"user_id": current_user.user_id, "item_id": payload.item_id},
         {"$inc": {"quantity": payload.quantity}},
         upsert=True
