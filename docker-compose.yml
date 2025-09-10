@@ -59,13 +59,6 @@ services:
       timeout: 5s
       retries: 5
 
-networks:
-  volticar-network:
-    driver: bridge
-# 如果選擇了持久化 Redis 數據，則需要定義 volume
-# volumes:
-#   redis-data:
-
   mongo-cli:
     image: mongo
     container_name: volticar-mongo-cli
@@ -81,3 +74,10 @@ networks:
       "
     depends_on:
       - api
+
+networks:
+  volticar-network:
+    driver: bridge
+# 如果選擇了持久化 Redis 數據，則需要定義 volume
+# volumes:
+#   redis-data:
