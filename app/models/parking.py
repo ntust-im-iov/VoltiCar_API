@@ -1,8 +1,12 @@
-from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
+from pydantic import BaseModel, Field, ConfigDict
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
+import json
 
 # 重用 station.py 中的地址模型
 from .station import LocationAddress
+
+if TYPE_CHECKING:
+    pass  # 避免循環引用
 
 
 # 停車場名稱模型 (類似 StationName)
@@ -20,11 +24,11 @@ class CarParkPosition(BaseModel):
 class ParkingSpace(BaseModel):
     CarParkID: str
     CarParkName: CarParkName
-    Address: Optional[LocationAddress] = None
+    Address: Optional["LocationAddress"] = None
     CarParkPosition: Optional["CarParkPosition"] = None
     FareDescription: Optional[str] = None
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
 
 
 # 停車場創建請求模型
@@ -39,9 +43,14 @@ class ParkingSpaceCreate(BaseModel):
 # 停車場摘要模型 (用於列表端點)
 class ParkingSummary(BaseModel):
     CarParkID: str
-    CarParkName: Optional[str] = None  # 這裡直接返回中文名稱字串
-    Address: Optional[str] = None  # 修改為接受字符串格式的地址
-    CarParkPosition: Optional["CarParkPosition"] = None
+    CarParkName: Optional[str] = None
+    # 將 Address 改為接受 LocationAddress 模型，並使用前向引用
+    Address: Optional["LocationAddress"] = None
+    PositionLat: Optional[float] = None
+    PositionLon: Optional[float] = None
     FareDescription: Optional[str] = None
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
+
+# Force Pydantic to rebuild the model to resolve forward references
+ParkingSummary.model_rebuild()

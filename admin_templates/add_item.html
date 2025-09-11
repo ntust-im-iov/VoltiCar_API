@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - 管理後台</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f7f6;
+            color: #333;
+        }
+        .container {
+            max-width: 900px;
+            margin: 20px auto;
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2em;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"],
+        input[type="number"],
+        textarea,
+        select {
+            width: calc(100% - 20px);
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 1em;
+            box-sizing: border-box;
+            transition: border-color 0.3s;
+        }
+        input[type="text"]:focus,
+        input[type="number"]:focus,
+        textarea:focus,
+        select:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        button {
+            background-color: #28a745;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1.1em;
+            transition: background-color 0.3s ease;
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+        .error-message {
+            color: #dc3545;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 20px;
+            color: #007bff;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            margin-top: 10px;
+        }
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ title }}</h1>
+
+        {% if error %}
+            <div class="error-message">{{ error }}</div>
+        {% endif %}
+
+        <form action="/admin/items/add" method="post">
+            <div class="form-group">
+                <label for="name">名稱:</label>
+                <input type="text" id="name" name="name" value="{{ form_data.name if form_data else '' }}" required>
+            </div>
+            <div class="form-group">
+                <label for="description">描述:</label>
+                <textarea id="description" name="description">{{ form_data.description if form_data else '' }}</textarea>
+            </div>
+            <div class="form-group">
+                <label for="category">類別:</label>
+                <input type="text" id="category" name="category" value="{{ form_data.category if form_data else '' }}" required>
+            </div>
+            <div class="form-group">
+                <label for="weight_per_unit">單位重量:</label>
+                <input type="number" id="weight_per_unit" name="weight_per_unit" step="0.01" value="{{ form_data.weight_per_unit if form_data else '' }}" required>
+            </div>
+            <div class="form-group">
+                <label for="volume_per_unit">單位體積:</label>
+                <input type="number" id="volume_per_unit" name="volume_per_unit" step="0.01" value="{{ form_data.volume_per_unit if form_data else '' }}" required>
+            </div>
+            <div class="form-group">
+                <label for="base_value_per_unit">單位基礎價值:</label>
+                <input type="number" id="base_value_per_unit" name="base_value_per_unit" value="{{ form_data.base_value_per_unit if form_data else '' }}" required>
+            </div>
+            <div class="form-group checkbox-group">
+                <input type="checkbox" id="is_fragile" name="is_fragile" {% if form_data and form_data.is_fragile %}checked{% endif %}>
+                <label for="is_fragile">易碎品</label>
+            </div>
+            <div class="form-group checkbox-group">
+                <input type="checkbox" id="is_perishable" name="is_perishable" {% if form_data and form_data.is_perishable %}checked{% endif %}>
+                <label for="is_perishable">易腐品</label>
+            </div>
+            <div class="form-group">
+                <label for="spoil_duration_hours">腐壞時長 (小時):</label>
+                <input type="number" id="spoil_duration_hours" name="spoil_duration_hours" value="{{ form_data.spoil_duration_hours if form_data else '' }}">
+            </div>
+            <div class="form-group">
+                <label for="required_permit_type">所需許可證類型:</label>
+                <input type="text" id="required_permit_type" name="required_permit_type" value="{{ form_data.required_permit_type if form_data else '' }}">
+            </div>
+            <div class="form-group">
+                <label for="icon_url">圖標 URL:</label>
+                <input type="text" id="icon_url" name="icon_url" value="{{ form_data.icon_url if form_data else '' }}">
+            </div>
+            <button type="submit">新增物品</button>
+        </form>
+        <a href="/admin/items" class="back-link">返回物品列表</a>
+    </div>
+</body>
+</html>

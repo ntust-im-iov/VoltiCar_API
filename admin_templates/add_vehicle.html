@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - 管理後台</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f7f6;
+            color: #333;
+        }
+        .container {
+            max-width: 900px;
+            margin: 20px auto;
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2em;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"],
+        input[type="number"],
+        textarea,
+        select {
+            width: calc(100% - 20px);
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 1em;
+            box-sizing: border-box;
+            transition: border-color 0.3s;
+        }
+        input[type="text"]:focus,
+        input[type="number"]:focus,
+        textarea:focus,
+        select:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        button {
+            background-color: #28a745;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1.1em;
+            transition: background-color 0.3s ease;
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+        .error-message {
+            color: #dc3545;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 20px;
+            color: #007bff;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            margin-top: 10px;
+        }
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ title }}</h1>
+
+        {% if error %}
+            <div class="error-message">{{ error }}</div>
+        {% endif %}
+
+        <form action="/admin/vehicles/add" method="post">
+            <div class="form-group">
+                <label for="name">名稱:</label>
+                <input type="text" id="name" name="name" value="{{ form_data.name if form_data else '' }}" required>
+            </div>
+            <div class="form-group">
+                <label for="type">類型:</label>
+                <input type="text" id="type" name="type" value="{{ form_data.type if form_data else '' }}" required>
+            </div>
+            <div class="form-group">
+                <label for="description">描述:</label>
+                <textarea id="description" name="description">{{ form_data.description if form_data else '' }}</textarea>
+            </div>
+            <div class="form-group">
+                <label for="max_load_weight">最大載重 (kg):</label>
+                <input type="number" id="max_load_weight" name="max_load_weight" step="0.01" value="{{ form_data.max_load_weight if form_data else '' }}" required>
+            </div>
+            <div class="form-group">
+                <label for="max_load_volume">最大載積 (m³):</label>
+                <input type="number" id="max_load_volume" name="max_load_volume" step="0.01" value="{{ form_data.max_load_volume if form_data else '' }}" required>
+            </div>
+            <div class="form-group">
+                <label for="base_price">基礎價格:</label>
+                <input type="number" id="base_price" name="base_price" value="{{ form_data.base_price if form_data else '' }}">
+            </div>
+            <div class="form-group">
+                <label for="rental_price_per_session">每次租賃價格:</label>
+                <input type="number" id="rental_price_per_session" name="rental_price_per_session" value="{{ form_data.rental_price_per_session if form_data else '' }}">
+            </div>
+            <div class="form-group">
+                <label for="availability_type">可用性類型:</label>
+                <select id="availability_type" name="availability_type" required>
+                    <option value="">請選擇</option>
+                    <option value="always_available" {% if form_data and form_data.availability_type == 'always_available' %}selected{% endif %}>始終可用</option>
+                    <option value="limited_time" {% if form_data and form_data.availability_type == 'limited_time' %}selected{% endif %}>限時</option>
+                    <option value="event_only" {% if form_data and form_data.availability_type == 'event_only' %}selected{% endif %}>僅活動</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="required_level_to_unlock">解鎖所需等級:</label>
+                <input type="number" id="required_level_to_unlock" name="required_level_to_unlock" value="{{ form_data.required_level_to_unlock if form_data else 1 }}" required>
+            </div>
+            <div class="form-group">
+                <label for="icon_url">圖標 URL:</label>
+                <input type="text" id="icon_url" name="icon_url" value="{{ form_data.icon_url if form_data else '' }}">
+            </div>
+            <div class="form-group">
+                <label for="image_url">圖片 URL:</label>
+                <input type="text" id="image_url" name="image_url" value="{{ form_data.image_url if form_data else '' }}">
+            </div>
+            <button type="submit">新增車輛</button>
+        </form>
+        <a href="/admin/vehicles" class="back-link">返回車輛列表</a>
+    </div>
+</body>
+</html>

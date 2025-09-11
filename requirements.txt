@@ -1,6 +1,6 @@
-fastapi>=0.68.0,<0.69.0
-pydantic>=1.8.0,<2.0.0
-uvicorn>=0.15.0,<0.16.0
+fastapi>=0.104.0
+pydantic>=2.0.0
+uvicorn>=0.15.0
 python-jose[cryptography]>=3.3.0,<3.4.0
 passlib[bcrypt]>=1.7.4,<1.8.0
 bcrypt==4.0.1
@@ -17,3 +17,4 @@ redis==5.0.1
 httpx>=0.20.0 # 用於異步 HTTP 請求
 aiofiles>=0.7.0 # 用於異步檔案操作
 geopy>=2.2.0
+Jinja2>=3.0.0  # 用於管理界面模板

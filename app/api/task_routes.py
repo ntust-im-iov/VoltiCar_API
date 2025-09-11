@@ -4,7 +4,8 @@ from datetime import datetime
 # from bson import ObjectId # ObjectId might not be needed directly in routes if using custom IDs
 
 from app.models.user import User
-from app.models.game_models import TaskDefinition, PlayerTask, BaseModel # BaseModel for AcceptTaskRequest
+from app.models.game_models import TaskDefinition, PlayerTask
+from pydantic import BaseModel  # BaseModel for AcceptTaskRequest
 from app.database import mongodb as db_provider # Renamed for clarity
 from app.utils.auth import get_current_user
 import uuid # For validating UUIDs if needed
@@ -39,7 +40,7 @@ async def list_available_tasks(
     tasks_cursor = db_provider.task_definitions_collection.find(query)
     tasks_list = await tasks_cursor.to_list(length=None)
     
-    return [TaskDefinition(**task) for task in tasks_list]
+    return [TaskDefinition.model_validate(task, from_attributes=True) for task in tasks_list]
 
 # --- 玩家任務相關 API ---
 
@@ -69,7 +70,7 @@ async def accept_task(
     if not task_def_doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任務不存在或不可用")
 
-    task_def_model = TaskDefinition(**task_def_doc)
+    task_def_model = TaskDefinition.model_validate(task_def_doc, from_attributes=True)
 
     now = datetime.now()
     if (task_def_model.availability_start_date and task_def_model.availability_start_date > now) or \
@@ -140,7 +141,7 @@ async def accept_task(
         reused_task_doc = await db_provider.player_tasks_collection.find_one({"_id": abandoned_task_to_reuse["_id"]})
         if not reused_task_doc: # Should not happen
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="重用已放棄任務時出錯")
-        return PlayerTask(**reused_task_doc)
+        return PlayerTask.model_validate(reused_task_doc, from_attributes=True)
     
     # If no abandoned task to reuse (or if specific logic prevented reuse), create a new PlayerTask record.
     new_player_task_instance = PlayerTask(
@@ -159,7 +160,7 @@ async def accept_task(
     if not created_task_doc: 
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="接受新任務失敗，無法讀取已創建的記錄")
         
-    return PlayerTask(**created_task_doc)
+    return PlayerTask.model_validate(created_task_doc, from_attributes=True)
 
 
 @player_task_router.delete("/{player_task_uuid}", status_code=status.HTTP_200_OK)
@@ -195,7 +196,7 @@ async def abandon_task(
     # --- Remove pickup items from warehouse ---
     task_def_doc = await db_provider.task_definitions_collection.find_one({"task_id": player_task_doc["task_id"]})
     if task_def_doc:
-        task_def_model = TaskDefinition(**task_def_doc)
+        task_def_model = TaskDefinition.model_validate(task_def_doc, from_attributes=True)
         if task_def_model.pickup_items:
             for item_to_remove in task_def_model.pickup_items:
                 # Decrease the quantity. This might result in a negative quantity if the player used the item,
@@ -237,4 +238,4 @@ async def list_player_accepted_tasks(
     player_tasks_cursor = db_provider.player_tasks_collection.find(query)
     player_tasks_list = await player_tasks_cursor.to_list(length=None)
     
-    return [PlayerTask(**pt) for pt in player_tasks_list]
+    return [PlayerTask.model_validate(pt, from_attributes=True) for pt in player_tasks_list]
