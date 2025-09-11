@@ -52,6 +52,8 @@ async def admin_dashboard(request: Request, admin: str = Depends(get_current_adm
         "items_count": await db_provider.item_definitions_collection.count_documents({}),
         "tasks_count": await db_provider.task_definitions_collection.count_documents({}),
         "destinations_count": await db_provider.destinations_collection.count_documents({}),
+        "game_events_count": await db_provider.volticar_db["GameEvents"].count_documents({}),
+        "shop_items_count": await db_provider.volticar_db["ShopItems"].count_documents({}),
     }
     
     return templates.TemplateResponse("dashboard.html", {
@@ -490,14 +492,21 @@ async def list_game_events(request: Request, admin: str = Depends(get_current_ad
     遊戲事件列表
     """
     try:
-        game_events_collection = db_provider.volticar_db["game_events"]
+        if db_provider.volticar_db is None:
+            raise HTTPException(status_code=503, detail="Database service not available")
+            
+        game_events_collection = db_provider.volticar_db["GameEvents"]
         events_cursor = game_events_collection.find().limit(100)
         events = await events_cursor.to_list(length=100)
         
         # 轉換 ObjectId 為字串
         for event in events:
             event["_id"] = str(event["_id"])
+            
+        print(f"Found {len(events)} game events")  # Debug log
+        
     except Exception as e:
+        print(f"Error fetching game events: {e}")  # Debug log
         events = []
     
     return templates.TemplateResponse("list.html", {
@@ -534,6 +543,9 @@ async def create_game_event(
     處理新增遊戲事件的表單提交
     """
     try:
+        if db_provider.volticar_db is None:
+            raise HTTPException(status_code=503, detail="Database service not available")
+            
         import json
         choices_list = json.loads(choices)
         
@@ -547,8 +559,9 @@ async def create_game_event(
         from app.models.game_models import GameEvent
         event = GameEvent(**new_event_data)
         
-        # 這裡應該插入到相應的集合中
-        # 目前先重定向到列表頁面
+        # Insert into MongoDB
+        game_events_collection = db_provider.volticar_db["GameEvents"]
+        await game_events_collection.insert_one(event.model_dump(by_alias=True, exclude_none=True))
         
         return RedirectResponse(url="/admin/game-events", status_code=303)
     except Exception as e:
@@ -565,14 +578,21 @@ async def list_shop_items(request: Request, admin: str = Depends(get_current_adm
     商店物品列表
     """
     try:
-        shop_items_collection = db_provider.volticar_db["shop_items"]
+        if db_provider.volticar_db is None:
+            raise HTTPException(status_code=503, detail="Database service not available")
+            
+        shop_items_collection = db_provider.volticar_db["ShopItems"]
         items_cursor = shop_items_collection.find().limit(100)
         items = await items_cursor.to_list(length=100)
         
         # 轉換 ObjectId 為字串
         for item in items:
             item["_id"] = str(item["_id"])
+            
+        print(f"Found {len(items)} shop items")  # Debug log
+        
     except Exception as e:
+        print(f"Error fetching shop items: {e}")  # Debug log
         items = []
     
     return templates.TemplateResponse("list.html", {
@@ -615,6 +635,9 @@ async def create_shop_item(
     處理新增商店物品的表單提交
     """
     try:
+        if db_provider.volticar_db is None:
+            raise HTTPException(status_code=503, detail="Database service not available")
+            
         new_item_data = {
             "name": name,
             "description": description,
@@ -635,7 +658,7 @@ async def create_shop_item(
         item = ShopItem(**new_item_data)
         
         # Insert into MongoDB
-        shop_items_collection = db_provider.volticar_db["shop_items"]
+        shop_items_collection = db_provider.volticar_db["ShopItems"]
         await shop_items_collection.insert_one(item.model_dump(by_alias=True, exclude_none=True))
         
         return RedirectResponse(url="/admin/shop-items", status_code=303)
@@ -689,9 +712,9 @@ async def delete_destination(destination_id: str, admin: str = Depends(get_curre
     """刪除目的地"""
     try:
         from bson import ObjectId
-        # 假設使用destinations集合
-        destinations_collection = db_provider.volticar_db["destinations"]
-        result = await destinations_collection.delete_one({"_id": ObjectId(destination_id)})
+        if db_provider.destinations_collection is None:
+            raise HTTPException(status_code=503, detail="Database service not available")
+        result = await db_provider.destinations_collection.delete_one({"_id": ObjectId(destination_id)})
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Destination not found")
         return {"status": "success", "message": "Destination deleted"}
@@ -703,8 +726,9 @@ async def delete_game_event(event_id: str, admin: str = Depends(get_current_admi
     """刪除遊戲事件"""
     try:
         from bson import ObjectId
-        # 假設使用game_events集合
-        game_events_collection = db_provider.volticar_db["game_events"]
+        if db_provider.volticar_db is None:
+            raise HTTPException(status_code=503, detail="Database service not available")
+        game_events_collection = db_provider.volticar_db["GameEvents"]
         result = await game_events_collection.delete_one({"_id": ObjectId(event_id)})
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Game event not found")
@@ -717,12 +741,363 @@ async def delete_shop_item(shop_item_id: str, admin: str = Depends(get_current_a
     """刪除商店物品"""
     try:
         from bson import ObjectId
-        # 假設使用shop_items集合
-        shop_items_collection = db_provider.volticar_db["shop_items"]
+        if db_provider.volticar_db is None:
+            raise HTTPException(status_code=503, detail="Database service not available")
+        shop_items_collection = db_provider.volticar_db["ShopItems"]
         result = await shop_items_collection.delete_one({"_id": ObjectId(shop_item_id)})
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Shop item not found")
         return {"status": "success", "message": "Shop item deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 編輯功能路由
+@admin_api.get("/vehicles/{vehicle_id}/edit", response_class=HTMLResponse)
+async def edit_vehicle_form(vehicle_id: str, request: Request, admin: str = Depends(get_current_admin)):
+    """顯示編輯車輛定義的表單"""
+    try:
+        from bson import ObjectId
+        if db_provider.vehicle_definitions_collection is None:
+            raise HTTPException(status_code=503, detail="Database service not available")
+        
+        vehicle = await db_provider.vehicle_definitions_collection.find_one({"_id": ObjectId(vehicle_id)})
+        if not vehicle:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
+        
+        # 轉換 ObjectId 為字串
+        vehicle["_id"] = str(vehicle["_id"])
+        
+        return templates.TemplateResponse("add_vehicle.html", {
+            "request": request,
+            "admin": admin,
+            "title": "編輯車輛定義",
+            "form_data": vehicle,
+            "edit_mode": True,
+            "item_id": vehicle_id
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@admin_api.post("/vehicles/{vehicle_id}/edit", response_class=HTMLResponse)
+async def update_vehicle(
+    vehicle_id: str,
+    request: Request,
+    admin: str = Depends(get_current_admin),
+    name: str = Form(...),
+    type: str = Form(...),
+    description: Optional[str] = Form(None),
+    max_load_weight: float = Form(...),
+    max_load_volume: float = Form(...),
+    base_price: Optional[int] = Form(None),
+    rental_price_per_session: Optional[int] = Form(None),
+    availability_type: str = Form(...),
+    required_level_to_unlock: int = Form(1),
+    icon_url: Optional[str] = Form(None),
+    image_url: Optional[str] = Form(None),
+):
+    """處理編輯車輛定義的表單提交"""
+    try:
+        from bson import ObjectId
+        if db_provider.vehicle_definitions_collection is None:
+            raise HTTPException(status_code=503, detail="Database service not available")
+
+        update_data = {
+            "name": name,
+            "type": type,
+            "description": description,
+            "max_load_weight": max_load_weight,
+            "max_load_volume": max_load_volume,
+            "base_price": base_price,
+            "rental_price_per_session": rental_price_per_session,
+            "availability_type": availability_type,
+            "required_level_to_unlock": required_level_to_unlock,
+            "icon_url": icon_url,
+            "image_url": image_url,
+        }
+        
+        # Pydantic validation
+        from app.models.game_models import VehicleDefinition
+        vehicle = VehicleDefinition(**update_data)
+        
+        # Update in MongoDB
+        result = await db_provider.vehicle_definitions_collection.update_one(
+            {"_id": ObjectId(vehicle_id)},
+            {"$set": vehicle.model_dump(by_alias=True, exclude_none=True)}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
+        
+        return RedirectResponse(url="/admin/vehicles", status_code=303)
+    except Exception as e:
+        return templates.TemplateResponse("add_vehicle.html", {
+            "request": request,
+            "admin": admin,
+            "title": "編輯車輛定義",
+            "error": str(e),
+            "form_data": update_data,
+            "edit_mode": True,
+            "item_id": vehicle_id
+        })
+
+@admin_api.get("/items/{item_id}/edit", response_class=HTMLResponse)
+async def edit_item_form(item_id: str, request: Request, admin: str = Depends(get_current_admin)):
+    """顯示編輯物品定義的表單"""
+    try:
+        from bson import ObjectId
+        if db_provider.item_definitions_collection is None:
+            raise HTTPException(status_code=503, detail="Database service not available")
+        
+        item = await db_provider.item_definitions_collection.find_one({"_id": ObjectId(item_id)})
+        if not item:
+            raise HTTPException(status_code=404, detail="Item not found")
+        
+        # 轉換 ObjectId 為字串
+        item["_id"] = str(item["_id"])
+        
+        return templates.TemplateResponse("add_item.html", {
+            "request": request,
+            "admin": admin,
+            "title": "編輯物品定義",
+            "form_data": item,
+            "edit_mode": True,
+            "item_id": item_id
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@admin_api.post("/items/{item_id}/edit", response_class=HTMLResponse)
+async def update_item(
+    item_id: str,
+    request: Request,
+    admin: str = Depends(get_current_admin),
+    name: str = Form(...),
+    category: str = Form(...),
+    description: Optional[str] = Form(None),
+    weight_per_unit: float = Form(...),
+    volume_per_unit: float = Form(...),
+    base_value_per_unit: int = Form(...),
+    is_fragile: bool = Form(False),
+    is_perishable: bool = Form(False),
+    spoil_duration_hours: Optional[int] = Form(None),
+    required_permit_type: Optional[str] = Form(None),
+    icon_url: Optional[str] = Form(None),
+):
+    """處理編輯物品定義的表單提交"""
+    try:
+        from bson import ObjectId
+        if db_provider.item_definitions_collection is None:
+            raise HTTPException(status_code=503, detail="Database service not available")
+
+        update_data = {
+            "name": name,
+            "category": category,
+            "description": description,
+            "weight_per_unit": weight_per_unit,
+            "volume_per_unit": volume_per_unit,
+            "base_value_per_unit": base_value_per_unit,
+            "is_fragile": is_fragile,
+            "is_perishable": is_perishable,
+            "spoil_duration_hours": spoil_duration_hours,
+            "required_permit_type": required_permit_type,
+            "icon_url": icon_url,
+        }
+        
+        # Pydantic validation
+        from app.models.game_models import ItemDefinition
+        item = ItemDefinition(**update_data)
+        
+        # Update in MongoDB
+        result = await db_provider.item_definitions_collection.update_one(
+            {"_id": ObjectId(item_id)},
+            {"$set": item.model_dump(by_alias=True, exclude_none=True)}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Item not found")
+        
+        return RedirectResponse(url="/admin/items", status_code=303)
+    except Exception as e:
+        return templates.TemplateResponse("add_item.html", {
+            "request": request,
+            "admin": admin,
+            "title": "編輯物品定義",
+            "error": str(e),
+            "form_data": update_data,
+            "edit_mode": True,
+            "item_id": item_id
+        })
+
+@admin_api.get("/destinations/{destination_id}/edit", response_class=HTMLResponse)
+async def edit_destination_form(destination_id: str, request: Request, admin: str = Depends(get_current_admin)):
+    """顯示編輯目的地的表單"""
+    try:
+        from bson import ObjectId
+        if db_provider.destinations_collection is None:
+            raise HTTPException(status_code=503, detail="Database service not available")
+        
+        destination = await db_provider.destinations_collection.find_one({"_id": ObjectId(destination_id)})
+        if not destination:
+            raise HTTPException(status_code=404, detail="Destination not found")
+        
+        # 轉換 ObjectId 為字串
+        destination["_id"] = str(destination["_id"])
+        
+        return templates.TemplateResponse("add_destination.html", {
+            "request": request,
+            "admin": admin,
+            "title": "編輯目的地",
+            "form_data": destination,
+            "edit_mode": True,
+            "item_id": destination_id
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@admin_api.post("/destinations/{destination_id}/edit", response_class=HTMLResponse)  
+async def update_destination(
+    destination_id: str,
+    request: Request,
+    admin: str = Depends(get_current_admin),
+    name: str = Form(...),
+    description: Optional[str] = Form(None),
+    region: str = Form(...),
+    latitude: float = Form(...),
+    longitude: float = Form(...),
+    is_unlocked_by_default: bool = Form(False),
+    unlock_requirements: Optional[str] = Form(None),
+    available_services: Optional[str] = Form(None),
+    icon_url: Optional[str] = Form(None),
+):
+    """處理編輯目的地的表單提交"""
+    try:
+        from bson import ObjectId
+        if db_provider.destinations_collection is None:
+            raise HTTPException(status_code=503, detail="Database service not available")
+
+        # 處理座標
+        coordinates = {
+            "type": "Point",
+            "coordinates": [longitude, latitude]  # GeoJSON 格式: [longitude, latitude]
+        }
+        
+        # 處理服務列表
+        services_list = []
+        if available_services:
+            services_list = [service.strip() for service in available_services.split(',') if service.strip()]
+
+        update_data = {
+            "name": name,
+            "description": description,
+            "region": region,
+            "coordinates": coordinates,
+            "is_unlocked_by_default": is_unlocked_by_default,
+            "unlock_requirements": unlock_requirements,
+            "available_services": services_list if services_list else None,
+            "icon_url": icon_url,
+        }
+        
+        # Pydantic validation
+        from app.models.game_models import Destination
+        destination = Destination(**update_data)
+        
+        # Update in MongoDB
+        result = await db_provider.destinations_collection.update_one(
+            {"_id": ObjectId(destination_id)},
+            {"$set": destination.model_dump(by_alias=True, exclude_none=True)}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Destination not found")
+        
+        return RedirectResponse(url="/admin/destinations", status_code=303)
+    except Exception as e:
+        return templates.TemplateResponse("add_destination.html", {
+            "request": request,
+            "admin": admin,
+            "title": "編輯目的地",
+            "error": str(e),
+            "form_data": update_data,
+            "edit_mode": True,
+            "item_id": destination_id
+        })
+
+# 測試資料路由（僅用於開發測試）
+@admin_api.post("/test/create-sample-data")
+async def create_sample_data(admin: str = Depends(get_current_admin)):
+    """創建一些示例資料用於測試"""
+    try:
+        if db_provider.volticar_db is None:
+            raise HTTPException(status_code=503, detail="Database service not available")
+        
+        # 創建示例遊戲事件
+        game_events_collection = db_provider.volticar_db["game_events"]
+        sample_events = [
+            {
+                "name": "隨機路檢",
+                "description": "在運送過程中遇到警察路檢",
+                "choices": [
+                    {"text": "配合檢查", "effect": "延遲10分鐘，但獲得聲望+1"},
+                    {"text": "快速通過", "effect": "有30%機率被罰款200元"}
+                ]
+            },
+            {
+                "name": "交通堵塞", 
+                "description": "前方發生交通事故造成堵塞",
+                "choices": [
+                    {"text": "等待疏通", "effect": "延遲15分鐘"},
+                    {"text": "繞道而行", "effect": "增加5公里距離，消耗額外燃料"}
+                ]
+            }
+        ]
+        
+        for event in sample_events:
+            existing = await game_events_collection.find_one({"name": event["name"]})
+            if not existing:
+                await game_events_collection.insert_one(event)
+        
+        # 創建示例商店物品
+        shop_items_collection = db_provider.volticar_db["shop_items"]
+        sample_shop_items = [
+            {
+                "name": "加速卡",
+                "description": "使用後可讓車輛速度提升20%，持續1小時",
+                "price": 100,
+                "category": "道具",
+                "required_level": 1,
+                "stack_limit": 5,
+                "is_featured": True,
+                "is_available": True
+            },
+            {
+                "name": "經驗值加倍卡",
+                "description": "使用後下一個任務獲得的經驗值翻倍",
+                "price": 150,
+                "category": "道具", 
+                "required_level": 5,
+                "stack_limit": 3,
+                "is_featured": False,
+                "is_available": True
+            },
+            {
+                "name": "保險卡",
+                "description": "保護車輛免受意外損傷，持續24小時",
+                "price": 200,
+                "category": "保險",
+                "required_level": 10,
+                "stack_limit": 1,
+                "is_featured": True,
+                "is_available": True
+            }
+        ]
+        
+        for item in sample_shop_items:
+            existing = await shop_items_collection.find_one({"name": item["name"]})
+            if not existing:
+                await shop_items_collection.insert_one(item)
+        
+        return {"status": "success", "message": "Sample data created successfully"}
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+
+{% block title %}商店物品管理 - Volticar 管理面板{% endblock %}
+
+{% block content %}
+<!-- 頁面標題 -->
+<div class="page-header fade-in">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1><i class="fas fa-shopping-cart"></i> 商店物品管理</h1>
+            <p class="mb-0">管理玩家可以購買的商店物品</p>
+        </div>
+        <div>
+            <a href="/admin/shop_items/add" class="btn btn-outline-light me-2">
+                <i class="fas fa-plus"></i> 新增物品
+            </a>
+            <button onclick="createSampleData()" class="btn btn-outline-light">
+                <i class="fas fa-database"></i> 建立範例資料
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- 搜尋和篩選 -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card fade-in">
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label for="searchInput" class="form-label">搜尋物品</label>
+                        <input type="text" class="form-control" id="searchInput" placeholder="搜尋物品名稱或描述...">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="categoryFilter" class="form-label">物品類別</label>
+                        <select class="form-select" id="categoryFilter">
+                            <option value="">全部類別</option>
+                            <option value="vehicle">載具</option>
+                            <option value="upgrade">升級</option>
+                            <option value="consumable">消耗品</option>
+                            <option value="decoration">裝飾</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="statusFilter" class="form-label">狀態</label>
+                        <select class="form-select" id="statusFilter">
+                            <option value="">全部狀態</option>
+                            <option value="available">上架中</option>
+                            <option value="unavailable">已下架</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">&nbsp;</label>
+                        <button onclick="clearFilters()" class="btn btn-outline-secondary d-block w-100">
+                            <i class="fas fa-times"></i> 清除
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 物品列表 -->
+<div class="row">
+    <div class="col-12">
+        <div class="card fade-in">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">商店物品列表</h5>
+                <span class="badge bg-primary">共 {{ items|length }} 個物品</span>
+            </div>
+            <div class="card-body p-0">
+                {% if items %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0" id="itemsTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th width="5%">#</th>
+                                <th width="20%">物品名稱</th>
+                                <th width="25%">描述</th>
+                                <th width="12%">類別</th>
+                                <th width="10%">價格</th>
+                                <th width="8%">庫存</th>
+                                <th width="8%">狀態</th>
+                                <th width="12%" class="text-center">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in items %}
+                            <tr class="item-row" data-category="{{ item.category or '' }}" data-status="{{ 'available' if item.is_available else 'unavailable' }}">
+                                <td>{{ loop.index }}</td>
+                                <td>
+                                    <strong>{{ item.name }}</strong>
+                                    {% if item.item_id %}
+                                    <br><small class="text-muted">ID: {{ item.item_id }}</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="text-truncate d-inline-block" style="max-width: 200px;" title="{{ item.description or '無描述' }}">
+                                        {{ item.description or '無描述' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if item.category %}
+                                        {% if item.category == 'vehicle' %}
+                                            <span class="badge bg-primary">載具</span>
+                                        {% elif item.category == 'upgrade' %}
+                                            <span class="badge bg-success">升級</span>
+                                        {% elif item.category == 'consumable' %}
+                                            <span class="badge bg-warning">消耗品</span>
+                                        {% elif item.category == 'decoration' %}
+                                            <span class="badge bg-info">裝飾</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ item.category }}</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-muted">無設定</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.price %}
+                                        <strong class="text-success">${{ item.price }}</strong>
+                                    {% else %}
+                                        <span class="text-muted">免費</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.stock is defined %}
+                                        {% if item.stock == -1 %}
+                                            <span class="badge bg-success">無限</span>
+                                        {% elif item.stock > 0 %}
+                                            <span class="badge bg-info">{{ item.stock }}</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">缺貨</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.is_available %}
+                                        <span class="badge bg-success">上架中</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">已下架</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <a href="/admin/shop_items/edit/{{ item._id }}" class="btn btn-outline-primary" title="編輯">
+                                            <i class="fas fa-edit"></i>
+                                        </a>
+                                        <button onclick="deleteItem('{{ item._id }}', '{{ item.name }}')" 
+                                                class="btn btn-outline-danger" title="刪除">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-5">
+                    <i class="fas fa-shopping-cart fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">尚未建立任何商店物品</h5>
+                    <p class="text-muted">點擊上方按鈕開始建立第一個商店物品</p>
+                    <a href="/admin/shop_items/add" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> 立即建立
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 搜尋功能
+document.getElementById('searchInput').addEventListener('input', function() {
+    filterTable();
+});
+
+document.getElementById('categoryFilter').addEventListener('change', function() {
+    filterTable();
+});
+
+document.getElementById('statusFilter').addEventListener('change', function() {
+    filterTable();
+});
+
+function filterTable() {
+    const searchText = document.getElementById('searchInput').value.toLowerCase();
+    const categoryFilter = document.getElementById('categoryFilter').value;
+    const statusFilter = document.getElementById('statusFilter').value;
+    const rows = document.querySelectorAll('.item-row');
+    
+    rows.forEach(row => {
+        const name = row.cells[1].textContent.toLowerCase();
+        const description = row.cells[2].textContent.toLowerCase();
+        const category = row.dataset.category;
+        const status = row.dataset.status;
+        
+        const matchesSearch = name.includes(searchText) || description.includes(searchText);
+        const matchesCategory = !categoryFilter || category === categoryFilter;
+        const matchesStatus = !statusFilter || status === statusFilter;
+        
+        if (matchesSearch && matchesCategory && matchesStatus) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
+function clearFilters() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('categoryFilter').value = '';
+    document.getElementById('statusFilter').value = '';
+    filterTable();
+}
+
+// 刪除功能
+function deleteItem(itemId, itemName) {
+    if (confirm(`確定要刪除商店物品「${itemName}」嗎？此操作無法復原。`)) {
+        fetch(`/admin/shop_items/delete/${itemId}`, {
+            method: 'POST',
+        })
+        .then(response => {
+            if (response.ok) {
+                location.reload();
+            } else {
+                throw new Error('刪除失敗');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('刪除失敗，請重試');
+        });
+    }
+}
+
+// 建立範例資料
+function createSampleData() {
+    if (confirm('確定要建立範例商店物品資料嗎？')) {
+        fetch('/admin/shop_items/create_sample', {
+            method: 'POST',
+        })
+        .then(response => {
+            if (response.ok) {
+                location.reload();
+            } else {
+                throw new Error('建立失敗');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('建立範例資料失敗，請重試');
+        });
+    }
+}
+</script>
+{% endblock %}
