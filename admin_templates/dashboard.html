@@ -1,192 +1,186 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Volticar 管理面板</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-</head>
-<body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="/admin/">
-                <i class="fas fa-car"></i> Volticar 管理面板
-            </a>
-            <div class="navbar-nav ms-auto">
-                <span class="navbar-text">
-                    <i class="fas fa-user"></i> {{ admin }}
-                </span>
+{% extends "base.html" %}
+
+{% block title %}儀表板 - Volticar 管理面板{% endblock %}
+
+{% block content %}
+<!-- 頁面標題 -->
+<div class="page-header fade-in">
+    <h1><i class="fas fa-tachometer-alt"></i> 系統儀表板</h1>
+    <p class="mb-0">歡迎回來，{{ admin }}！以下是系統概況</p>
+</div>
+
+<!-- 統計卡片 -->
+<div class="row g-4 mb-4">
+    <div class="col-md-6 col-lg-3">
+        <div class="card stats-card fade-in" style="background: linear-gradient(135deg, #3498db, #2980b9);">
+            <div class="card-body text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title mb-2 opacity-75">用戶數量</h6>
+                        <h2 class="mb-0">{{ stats.users_count }}</h2>
+                    </div>
+                    <div class="text-end">
+                        <i class="fas fa-users fa-3x opacity-75"></i>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <a href="/admin/users" class="text-white text-decoration-none d-flex align-items-center">
+                        查看詳情 <i class="fas fa-arrow-right ms-2"></i>
+                    </a>
+                </div>
             </div>
-        </div>
-    </nav>
-
-    <div class="container-fluid">
-        <div class="row">
-            <nav class="col-md-3 col-lg-2 d-md-block bg-light sidebar collapse">
-                <div class="position-sticky pt-3">
-                    <ul class="nav flex-column">
-                        <li class="nav-item">
-                            <a class="nav-link active" href="/admin/">
-                                <i class="fas fa-tachometer-alt"></i> 儀表板
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="/admin/users">
-                                <i class="fas fa-users"></i> 用戶管理
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="/admin/vehicles">
-                                <i class="fas fa-car"></i> 車輛定義
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="/admin/items">
-                                <i class="fas fa-boxes"></i> 物品定義
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="/admin/tasks">
-                                <i class="fas fa-tasks"></i> 任務定義
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="/admin/destinations">
-                                <i class="fas fa-map-marker-alt"></i> 目的地
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#" data-bs-toggle="collapse" data-bs-target="#addDataSubmenu" aria-expanded="false" aria-controls="addDataSubmenu">
-                                <i class="fas fa-plus-circle"></i> 新增資料
-                            </a>
-                            <div class="collapse" id="addDataSubmenu">
-                                <ul class="nav flex-column ms-3">
-                                    <li class="nav-item">
-                                        <a class="nav-link" href="/admin/vehicles/add">
-                                            <i class="fas fa-car-side"></i> 新增車輛定義
-                                        </a>
-                                    </li>
-                                    <li class="nav-item">
-                                        <a class="nav-link" href="/admin/items/add">
-                                            <i class="fas fa-box"></i> 新增物品定義
-                                        </a>
-                                    </li>
-                                </ul>
-                            </div>
-                        </li>
-                    </ul>
-                </div>
-            </nav>
-
-            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
-                <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                    <h1 class="h2">儀表板</h1>
-                </div>
-
-                <div class="row">
-                    <div class="col-md-6 col-lg-3 mb-4">
-                        <div class="card text-white bg-primary">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between">
-                                    <div>
-                                        <h5 class="card-title">用戶數量</h5>
-                                        <h2>{{ stats.users_count }}</h2>
-                                    </div>
-                                    <div class="align-self-center">
-                                        <i class="fas fa-users fa-2x"></i>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="card-footer">
-                                <a href="/admin/users" class="text-white text-decoration-none">
-                                    查看詳情 <i class="fas fa-arrow-circle-right"></i>
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-md-6 col-lg-3 mb-4">
-                        <div class="card text-white bg-success">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between">
-                                    <div>
-                                        <h5 class="card-title">車輛定義</h5>
-                                        <h2>{{ stats.vehicles_count }}</h2>
-                                    </div>
-                                    <div class="align-self-center">
-                                        <i class="fas fa-car fa-2x"></i>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="card-footer">
-                                <a href="/admin/vehicles" class="text-white text-decoration-none">
-                                    查看詳情 <i class="fas fa-arrow-circle-right"></i>
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-md-6 col-lg-3 mb-4">
-                        <div class="card text-white bg-warning">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between">
-                                    <div>
-                                        <h5 class="card-title">物品定義</h5>
-                                        <h2>{{ stats.items_count }}</h2>
-                                    </div>
-                                    <div class="align-self-center">
-                                        <i class="fas fa-boxes fa-2x"></i>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="card-footer">
-                                <a href="/admin/items" class="text-white text-decoration-none">
-                                    查看詳情 <i class="fas fa-arrow-circle-right"></i>
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-md-6 col-lg-3 mb-4">
-                        <div class="card text-white bg-danger">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between">
-                                    <div>
-                                        <h5 class="card-title">任務定義</h5>
-                                        <h2>{{ stats.tasks_count }}</h2>
-                                    </div>
-                                    <div class="align-self-center">
-                                        <i class="fas fa-tasks fa-2x"></i>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="card-footer">
-                                <a href="/admin/tasks" class="text-white text-decoration-none">
-                                    查看詳情 <i class="fas fa-arrow-circle-right"></i>
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="row">
-                    <div class="col-12">
-                        <div class="card">
-                            <div class="card-header">
-                                <h5>系統狀態</h5>
-                            </div>
-                            <div class="card-body">
-                                <p>管理面板運行正常</p>
-                                <p>目的地數量: {{ stats.destinations_count }}</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </main>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+    <div class="col-md-6 col-lg-3">
+        <div class="card stats-card fade-in" style="background: linear-gradient(135deg, #27ae60, #229954);">
+            <div class="card-body text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title mb-2 opacity-75">車輛定義</h6>
+                        <h2 class="mb-0">{{ stats.vehicles_count }}</h2>
+                    </div>
+                    <div class="text-end">
+                        <i class="fas fa-car fa-3x opacity-75"></i>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <a href="/admin/vehicles" class="text-white text-decoration-none d-flex align-items-center">
+                        查看詳情 <i class="fas fa-arrow-right ms-2"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 col-lg-3">
+        <div class="card stats-card fade-in" style="background: linear-gradient(135deg, #f39c12, #e67e22);">
+            <div class="card-body text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title mb-2 opacity-75">物品定義</h6>
+                        <h2 class="mb-0">{{ stats.items_count }}</h2>
+                    </div>
+                    <div class="text-end">
+                        <i class="fas fa-boxes fa-3x opacity-75"></i>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <a href="/admin/items" class="text-white text-decoration-none d-flex align-items-center">
+                        查看詳情 <i class="fas fa-arrow-right ms-2"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 col-lg-3">
+        <div class="card stats-card fade-in" style="background: linear-gradient(135deg, #e74c3c, #c0392b);">
+            <div class="card-body text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title mb-2 opacity-75">任務定義</h6>
+                        <h2 class="mb-0">{{ stats.tasks_count }}</h2>
+                    </div>
+                    <div class="text-end">
+                        <i class="fas fa-tasks fa-3x opacity-75"></i>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <a href="/admin/tasks" class="text-white text-decoration-none d-flex align-items-center">
+                        查看詳情 <i class="fas fa-arrow-right ms-2"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 快速操作和系統狀態 -->
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="card fade-in">
+            <div class="card-header">
+                <h5><i class="fas fa-plus-circle"></i> 快速新增</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <a href="/admin/vehicles/add" class="btn btn-outline-primary w-100 d-flex align-items-center justify-content-center">
+                            <i class="fas fa-car me-2"></i> 新增車輛定義
+                        </a>
+                    </div>
+                    <div class="col-md-6">
+                        <a href="/admin/items/add" class="btn btn-outline-success w-100 d-flex align-items-center justify-content-center">
+                            <i class="fas fa-box me-2"></i> 新增物品定義
+                        </a>
+                    </div>
+                    <div class="col-md-6">
+                        <a href="/admin/tasks/add" class="btn btn-outline-warning w-100 d-flex align-items-center justify-content-center">
+                            <i class="fas fa-tasks me-2"></i> 新增任務定義
+                        </a>
+                    </div>
+                    <div class="col-md-6">
+                        <a href="/admin/destinations/add" class="btn btn-outline-danger w-100 d-flex align-items-center justify-content-center">
+                            <i class="fas fa-map-marker-alt me-2"></i> 新增目的地
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card fade-in">
+            <div class="card-header">
+                <h5><i class="fas fa-info-circle"></i> 系統狀態</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>資料庫連線</span>
+                        <span class="badge bg-success">正常</span>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>目的地數量</span>
+                        <span class="badge bg-info">{{ stats.destinations_count }}</span>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>系統版本</span>
+                        <span class="badge bg-secondary">v1.0.0</span>
+                    </div>
+                </div>
+                <div class="text-center">
+                    <small class="text-muted">
+                        <i class="fas fa-clock"></i> 
+                        最後更新: <span id="current-time"></span>
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function updateCurrentTime() {
+    const now = new Date();
+    const timeString = now.getFullYear() + '-' + 
+                      String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+                      String(now.getDate()).padStart(2, '0') + ' ' +
+                      String(now.getHours()).padStart(2, '0') + ':' + 
+                      String(now.getMinutes()).padStart(2, '0') + ':' + 
+                      String(now.getSeconds()).padStart(2, '0');
+    document.getElementById('current-time').textContent = timeString;
+}
+
+// 更新時間並每秒鐘刷新
+updateCurrentTime();
+setInterval(updateCurrentTime, 1000);
+</script>
+{% endblock %}
