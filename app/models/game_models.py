@@ -127,10 +127,15 @@ class TaskRewardItem(BaseModel):
 
 class TaskRewards(BaseModel):
     experience_points: int
-    currency: int
+    currency: Optional[int] = 0
     item_rewards: Optional[List[TaskRewardItem]] = None
     unlock_vehicle_ids: Optional[List[str]] = None 
     unlock_destination_ids: Optional[List[str]] = None
+    Config = CommonConfig
+
+class TaskPickupItem(BaseModel):
+    item_id: str
+    quantity: int
     Config = CommonConfig
 
 class TaskDefinition(BaseModel):
@@ -139,9 +144,10 @@ class TaskDefinition(BaseModel):
     title: str
     # ... (rest of TaskDefinition fields)
     description: str
-    type: str
+    mode: str
     requirements: TaskRequirements
     rewards: TaskRewards
+    pickup_items: Optional[List[TaskPickupItem]] = Field(default=None, description="Items to be given to the player upon accepting the task")
     is_repeatable: bool = Field(default=False)
     repeat_cooldown_hours: Optional[int] = None
     availability_start_date: Optional[datetime] = None
@@ -253,3 +259,57 @@ class GameSession(BaseModel):
     outcome_summary: Optional[GameSessionOutcomeSummary] = None
     last_updated_at: datetime = Field(default_factory=datetime.now)
     Config = CommonConfig
+
+# --- New Game Loop Models ---
+
+class ChargeSessionReport(BaseModel):
+    vehicle_instance_id: str
+    kwh_added: float
+
+class CheckInPayload(BaseModel):
+    station_id: str
+    latitude: float
+    longitude: float
+
+class GameTask(BaseModel):
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    task_id: str = Field(default_factory=lambda: str(uuid.uuid4()), unique=True)
+    station_id: str
+    title: str
+    description: str
+    reward_points: int
+    required_kwh: int
+    destination_station_id: str
+    created_at: datetime = Field(default_factory=datetime.now)
+    is_active: bool = True
+    Config = CommonConfig
+
+class GameEvent(BaseModel):
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    event_id: str = Field(default_factory=lambda: str(uuid.uuid4()), unique=True)
+    name: str
+    description: str
+    choices: List[str]
+    Config = CommonConfig
+
+class ResolveEventPayload(BaseModel):
+    event_id: str
+    choice: str
+    item_id: Optional[str] = None
+
+class ShopItem(BaseModel):
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    item_id: str = Field(default_factory=lambda: str(uuid.uuid4()), unique=True)
+    name: str
+    description: str
+    price: int
+    category: str
+    icon_url: Optional[str] = None
+    Config = CommonConfig
+
+class PurchasePayload(BaseModel):
+    item_id: str
+    quantity: int
+
+class VehicleUpgradePayload(BaseModel):
+    upgrade_type: str

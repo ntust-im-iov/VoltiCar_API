@@ -16,7 +16,7 @@
     *   **用途:** 獲取當前可供玩家選擇的任務列表（例如每日任務、特殊任務）。
     *   **請求參數:**
         *   `status` (查詢參數, 可選, string): 篩選任務狀態，例如 `available` (預設), `accepted` (需要配合玩家認證)。
-        *   `type` (查詢參數, 可選, string): 篩選任務類型，例如 `daily`, `special`。
+        *   `mode` (查詢參數, 可選, string): 篩選任務模式，例如 `daily`, `story`。
     *   **請求體:** 無
     *   **回應體 (成功: 200 OK):**
         ```json
@@ -31,7 +31,7 @@
                 "currency": "integer"
               },
               "requirements": "object", // 例如：特定貨物、目的地等
-              "type": "string", // daily, special
+              "mode": "string", // daily, story
               "expiry_date": "string (ISO 8601 DateTime, 可選)"
             }
             // ... 其他任務
@@ -482,7 +482,7 @@
     *   `_id`: ObjectId (主鍵)
     *   `title`: String (任務標題, 唯一)
     *   `description`: String (任務詳細描述)
-    *   `type`: String (任務類型，例如：`daily`, `story`, `special_event`, `contract`)
+    *   `mode`: String (任務模式，例如：`daily`, `story`, `special_event`)
     *   `requirements`: Embedded Object (任務完成條件)
         *   `required_player_level`: Integer (最低玩家等級, 可選, 預設 1)
         *   `deliver_items`: Array of Embedded Objects (需要運送的特定物品, 可選)
@@ -592,7 +592,7 @@
 *   **`player_warehouse_items`**:
     *   索引: (`player_id`, `item_id`) (unique)
 *   **`tasks`**:
-    *   索引: `type`, `is_active`
+    *   索引: `mode`, `is_active`
 *   **`player_tasks`**:
     *   索引: `player_id`, `task_id`, (`player_id`, `status`), `linked_game_session_id`
 *   **`destinations`**:

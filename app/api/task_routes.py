@@ -16,7 +16,7 @@ player_task_router = APIRouter(prefix="/player/tasks", tags=["玩家任務 (Play
 
 @task_definition_router.get("/", response_model=List[TaskDefinition])
 async def list_available_tasks(
-    type: Optional[str] = None,
+    mode: Optional[str] = None,
 ):
     """
     獲取當前可供選擇的任務列表。
@@ -25,8 +25,8 @@ async def list_available_tasks(
         raise HTTPException(status_code=503, detail="任務定義資料庫服務未初始化")
 
     query: Dict[str, Any] = {"is_active": True}
-    if type:
-        query["type"] = type
+    if mode:
+        query["mode"] = mode
     
     now = datetime.now()
     query["$or"] = [
@@ -53,20 +53,22 @@ async def accept_task(
 ):
     """
     允許玩家接受一個任務。
+    如果任務定義了 `pickup_items`，會將這些道具添加到玩家的倉庫中。
     """
     if db_provider.task_definitions_collection is None or \
-       db_provider.player_tasks_collection is None:
+       db_provider.player_tasks_collection is None or \
+       db_provider.player_warehouse_items_collection is None:
         raise HTTPException(status_code=503, detail="資料庫服務未初始化")
 
     task_definition_uuid_to_accept = request_body.task_id
 
     task_def_doc = await db_provider.task_definitions_collection.find_one({
-        "task_id": task_definition_uuid_to_accept, 
+        "task_id": task_definition_uuid_to_accept,
         "is_active": True
     })
     if not task_def_doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任務不存在或不可用")
-    
+
     task_def_model = TaskDefinition(**task_def_doc)
 
     now = datetime.now()
@@ -93,6 +95,23 @@ async def accept_task(
         })
         if completed_task:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="此任務不可重複且已完成")
+
+    # --- Add pickup items to warehouse ---
+    if task_def_model.pickup_items:
+        for item_to_pickup in task_def_model.pickup_items:
+            await db_provider.player_warehouse_items_collection.update_one(
+                {"user_id": current_user.user_id, "item_id": item_to_pickup.item_id},
+                {
+                    "$inc": {"quantity": item_to_pickup.quantity},
+                    "$setOnInsert": {
+                        "player_warehouse_item_id": str(uuid.uuid4()),
+                        "user_id": current_user.user_id,
+                        "item_id": item_to_pickup.item_id,
+                    },
+                    "$set": {"last_updated_at": datetime.now()}
+                },
+                upsert=True
+            )
 
     # Check for an existing "abandoned" task for this user and task_definition to reuse
     abandoned_task_to_reuse = await db_provider.player_tasks_collection.find_one({
@@ -143,12 +162,18 @@ async def accept_task(
     return PlayerTask(**created_task_doc)
 
 
-@player_task_router.delete("/{player_task_uuid}", status_code=status.HTTP_200_OK) 
+@player_task_router.delete("/{player_task_uuid}", status_code=status.HTTP_200_OK)
 async def abandon_task(
     player_task_uuid: str = Path(..., description="要放棄的玩家任務的 player_task_id (UUID)"),
     current_user: User = Depends(get_current_user)
 ):
-    if db_provider.player_tasks_collection is None:
+    """
+    允許玩家放棄一個任務。
+    如果任務在接受時給予了 `pickup_items`，這些道具將從玩家倉庫中移除。
+    """
+    if db_provider.player_tasks_collection is None or \
+       db_provider.task_definitions_collection is None or \
+       db_provider.player_warehouse_items_collection is None:
         raise HTTPException(status_code=503, detail="資料庫服務未初始化")
 
     try:
@@ -158,7 +183,7 @@ async def abandon_task(
 
     player_task_doc = await db_provider.player_tasks_collection.find_one({
         "player_task_id": player_task_uuid,
-        "user_id": current_user.user_id # Changed from player_id
+        "user_id": current_user.user_id
     })
 
     if not player_task_doc:
@@ -166,13 +191,30 @@ async def abandon_task(
 
     if player_task_doc["status"] not in ["accepted", "in_progress_linked_to_session"]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"任務狀態為 {player_task_doc['status']}，無法放棄")
-    
+
+    # --- Remove pickup items from warehouse ---
+    task_def_doc = await db_provider.task_definitions_collection.find_one({"task_id": player_task_doc["task_id"]})
+    if task_def_doc:
+        task_def_model = TaskDefinition(**task_def_doc)
+        if task_def_model.pickup_items:
+            for item_to_remove in task_def_model.pickup_items:
+                # Decrease the quantity. This might result in a negative quantity if the player used the item,
+                # which could be a valid state (e.g., player owes the item).
+                # The logic here simply removes the quantity that was given.
+                await db_provider.player_warehouse_items_collection.update_one(
+                    {"user_id": current_user.user_id, "item_id": item_to_remove.item_id},
+                    {"$inc": {"quantity": -item_to_remove.quantity}}
+                )
+                # Optional: Add logic here to delete the warehouse item if quantity <= 0
+
+    # Mark the task as abandoned
     update_result = await db_provider.player_tasks_collection.update_one(
-        {"player_task_id": player_task_uuid, "user_id": current_user.user_id}, # Changed from player_id
+        {"player_task_id": player_task_uuid, "user_id": current_user.user_id},
         {"$set": {"status": "abandoned", "abandoned_at": datetime.now(), "last_updated_at": datetime.now()}}
     )
 
     if update_result.modified_count == 0:
+        # This could happen if the document was modified between the find and update, but it's unlikely here.
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="放棄任務失敗 (可能已被修改或不存在)")
 
     return {"message": "任務已成功放棄"}
