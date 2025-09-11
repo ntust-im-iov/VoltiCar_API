@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+
+{% block title %}遊戲事件管理 - Volticar 管理面板{% endblock %}
+
+{% block content %}
+<!-- 頁面標題 -->
+<div class="page-header fade-in">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1><i class="fas fa-calendar-alt"></i> 遊戲事件管理</h1>
+            <p class="mb-0">管理遊戲中的隨機事件和選擇情境</p>
+        </div>
+        <div>
+            <a href="/admin/game_events/add" class="btn btn-outline-light me-2">
+                <i class="fas fa-plus"></i> 新增事件
+            </a>
+            <button onclick="createSampleData()" class="btn btn-outline-light">
+                <i class="fas fa-database"></i> 建立範例資料
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- 搜尋和篩選 -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card fade-in">
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label for="searchInput" class="form-label">搜尋事件</label>
+                        <input type="text" class="form-control" id="searchInput" placeholder="搜尋事件名稱或描述...">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="typeFilter" class="form-label">事件類型</label>
+                        <select class="form-select" id="typeFilter">
+                            <option value="">全部類型</option>
+                            <option value="limited">限時活動</option>
+                            <option value="daily">每日活動</option>
+                            <option value="weekly">每週活動</option>
+                            <option value="special">特殊活動</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="statusFilter" class="form-label">狀態</label>
+                        <select class="form-select" id="statusFilter">
+                            <option value="">全部狀態</option>
+                            <option value="active">啟用</option>
+                            <option value="inactive">停用</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">&nbsp;</label>
+                        <button onclick="clearFilters()" class="btn btn-outline-secondary d-block w-100">
+                            <i class="fas fa-times"></i> 清除
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 事件列表 -->
+<div class="row">
+    <div class="col-12">
+        <div class="card fade-in">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">遊戲事件列表</h5>
+                <span class="badge bg-primary">共 {{ events|length }} 個事件</span>
+            </div>
+            <div class="card-body p-0">
+                {% if events %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0" id="eventsTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th width="5%">#</th>
+                                <th width="20%">事件名稱</th>
+                                <th width="25%">描述</th>
+                                <th width="12%">類型</th>
+                                <th width="15%">時間範圍</th>
+                                <th width="8%">狀態</th>
+                                <th width="15%" class="text-center">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for event in events %}
+                            <tr class="event-row" data-event-type="{{ event.event_type or '' }}" data-status="{{ 'active' if event.is_active else 'inactive' }}">
+                                <td>{{ loop.index }}</td>
+                                <td>
+                                    <strong>{{ event.name }}</strong>
+                                    {% if event.event_id %}
+                                    <br><small class="text-muted">ID: {{ event.event_id }}</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="text-truncate d-inline-block" style="max-width: 200px;" title="{{ event.description or '無描述' }}">
+                                        {{ event.description or '無描述' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if event.event_type %}
+                                        {% if event.event_type == 'limited' %}
+                                            <span class="badge bg-danger">限時活動</span>
+                                        {% elif event.event_type == 'daily' %}
+                                            <span class="badge bg-success">每日活動</span>
+                                        {% elif event.event_type == 'weekly' %}
+                                            <span class="badge bg-warning">每週活動</span>
+                                        {% elif event.event_type == 'special' %}
+                                            <span class="badge bg-info">特殊活動</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ event.event_type }}</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-muted">無設定</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if event.start_time and event.end_time %}
+                                        <small>
+                                            {{ event.start_time.strftime('%Y/%m/%d') }}<br>
+                                            至 {{ event.end_time.strftime('%Y/%m/%d') }}
+                                        </small>
+                                    {% elif event.start_time %}
+                                        <small>自 {{ event.start_time.strftime('%Y/%m/%d %H:%M') }}</small>
+                                    {% else %}
+                                        <span class="text-muted">無限制</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if event.is_active %}
+                                        <span class="badge bg-success">啟用</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">停用</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <a href="/admin/game_events/edit/{{ event._id }}" class="btn btn-outline-primary" title="編輯">
+                                            <i class="fas fa-edit"></i>
+                                        </a>
+                                        <button onclick="deleteEvent('{{ event._id }}', '{{ event.name }}')" 
+                                                class="btn btn-outline-danger" title="刪除">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-5">
+                    <i class="fas fa-calendar-alt fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">尚未建立任何遊戲事件</h5>
+                    <p class="text-muted">點擊上方按鈕開始建立第一個遊戲事件</p>
+                    <a href="/admin/game_events/add" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> 立即建立
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 搜尋功能
+document.getElementById('searchInput').addEventListener('input', function() {
+    filterTable();
+});
+
+document.getElementById('typeFilter').addEventListener('change', function() {
+    filterTable();
+});
+
+document.getElementById('statusFilter').addEventListener('change', function() {
+    filterTable();
+});
+
+function filterTable() {
+    const searchText = document.getElementById('searchInput').value.toLowerCase();
+    const typeFilter = document.getElementById('typeFilter').value;
+    const statusFilter = document.getElementById('statusFilter').value;
+    const rows = document.querySelectorAll('.event-row');
+    
+    rows.forEach(row => {
+        const name = row.cells[1].textContent.toLowerCase();
+        const description = row.cells[2].textContent.toLowerCase();
+        const eventType = row.dataset.eventType;
+        const status = row.dataset.status;
+        
+        const matchesSearch = name.includes(searchText) || description.includes(searchText);
+        const matchesType = !typeFilter || eventType === typeFilter;
+        const matchesStatus = !statusFilter || status === statusFilter;
+        
+        if (matchesSearch && matchesType && matchesStatus) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
+function clearFilters() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('typeFilter').value = '';
+    document.getElementById('statusFilter').value = '';
+    filterTable();
+}
+
+// 刪除功能
+function deleteEvent(eventId, eventName) {
+    if (confirm(`確定要刪除遊戲事件「${eventName}」嗎？此操作無法復原。`)) {
+        fetch(`/admin/game_events/delete/${eventId}`, {
+            method: 'POST',
+        })
+        .then(response => {
+            if (response.ok) {
+                location.reload();
+            } else {
+                throw new Error('刪除失敗');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('刪除失敗，請重試');
+        });
+    }
+}
+
+// 建立範例資料
+function createSampleData() {
+    if (confirm('確定要建立範例遊戲事件資料嗎？')) {
+        fetch('/admin/game_events/create_sample', {
+            method: 'POST',
+        })
+        .then(response => {
+            if (response.ok) {
+                location.reload();
+            } else {
+                throw new Error('建立失敗');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('建立範例資料失敗，請重試');
+        });
+    }
+}
+</script>
+{% endblock %}

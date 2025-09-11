@@ -120,6 +120,17 @@
                         <th>座標</th>
                         <th>可用服務</th>
                         <th>解鎖狀態</th>
+                        {% elif collection == 'game-events' %}
+                        <th>事件名稱</th>
+                        <th>描述</th>
+                        <th>選擇數量</th>
+                        <th>狀態</th>
+                        {% elif collection == 'shop-items' %}
+                        <th>商品名稱</th>
+                        <th>價格</th>
+                        <th>類別</th>
+                        <th>等級需求</th>
+                        <th>狀態</th>
                         {% else %}
                         <th>ID</th>
                         <th>名稱</th>
@@ -199,6 +210,43 @@
                             <span class="badge bg-success">預設解鎖</span>
                             {% else %}
                             <span class="badge bg-warning">需解鎖</span>
+                            {% endif %}
+                        </td>
+                        
+                        {% elif collection == 'game-events' %}
+                        <td><strong>{{ item.name }}</strong></td>
+                        <td>
+                            <span class="text-muted">{{ item.description[:50] }}{% if item.description|length > 50 %}...{% endif %}</span>
+                        </td>
+                        <td>
+                            {% if item.choices %}
+                            <span class="badge bg-primary">{{ item.choices|length }} 個選項</span>
+                            {% else %}
+                            <span class="badge bg-secondary">無選項</span>
+                            {% endif %}
+                        </td>
+                        <td><span class="badge bg-success">正常</span></td>
+                        
+                        {% elif collection == 'shop-items' %}
+                        <td><strong>{{ item.name }}</strong></td>
+                        <td>
+                            {% if item.discount_price %}
+                            <span class="text-decoration-line-through text-muted">${{ item.price }}</span>
+                            <span class="text-danger fw-bold">${{ item.discount_price }}</span>
+                            {% else %}
+                            <span class="fw-bold">${{ item.price }}</span>
+                            {% endif %}
+                        </td>
+                        <td><span class="badge bg-secondary">{{ item.category }}</span></td>
+                        <td><span class="badge bg-warning">Lv.{{ item.required_level or 1 }}</span></td>
+                        <td>
+                            {% if item.is_available %}
+                            <span class="badge bg-success">上架中</span>
+                            {% else %}
+                            <span class="badge bg-secondary">下架</span>
+                            {% endif %}
+                            {% if item.is_featured %}
+                            <span class="badge bg-star">精選</span>
                             {% endif %}
                         </td>
                         

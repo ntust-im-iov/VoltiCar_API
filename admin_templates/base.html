@@ -152,6 +152,19 @@
             background: var(--primary-color);
         }
         
+        /* 自定義 badge 顏色 */
+        .bg-purple {
+            background-color: #9b59b6 !important;
+        }
+        
+        .bg-teal {
+            background-color: #1abc9c !important;
+        }
+        
+        .bg-star {
+            background-color: #f39c12 !important;
+        }
+        
         /* 動畫效果 */
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(20px); }
@@ -165,6 +178,45 @@
         /* Select2 自定義樣式 */
         .select2-container--bootstrap-5 .select2-selection {
             border-radius: 8px;
+        }
+        
+        /* 精選商品樣式 */
+        .badge.bg-star {
+            background: linear-gradient(45deg, #f39c12, #e67e22) !important;
+            color: white;
+        }
+        
+        /* 表格行懸停效果 */
+        .table tbody tr {
+            transition: all 0.2s ease;
+        }
+        
+        .table tbody tr:hover {
+            background-color: rgba(52, 152, 219, 0.1);
+            transform: scale(1.01);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        /* 卡片內容優化 */
+        .card-body {
+            padding: 1.5rem;
+        }
+        
+        /* 按鈕組樣式 */
+        .btn-group-sm .btn {
+            border-radius: 6px;
+        }
+        
+        /* 空狀態樣式 */
+        .empty-state {
+            padding: 4rem 2rem;
+            text-align: center;
+        }
+        
+        .empty-state i {
+            font-size: 4rem;
+            color: #6c757d;
+            margin-bottom: 1rem;
         }
     </style>
     {% block extra_css %}{% endblock %}
