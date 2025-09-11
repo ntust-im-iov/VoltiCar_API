@@ -59,22 +59,6 @@ services:
       timeout: 5s
       retries: 5
 
-  mongo-cli:
-    image: mongo
-    container_name: volticar-mongo-cli
-    volumes:
-      - ./insert_mock_data.js:/scripts/insert_mock_data.js
-    networks:
-      - volticar-network
-    entrypoint: >
-      /bin/bash -c "
-        echo 'Waiting for API to be ready...';
-        sleep 10;
-        mongosh 'mongodb://Volticar:RJW1128@59.126.6.46:27017/Volticar?authSource=admin' --file /scripts/insert_mock_data.js;
-      "
-    depends_on:
-      - api
-
 networks:
   volticar-network:
     driver: bridge

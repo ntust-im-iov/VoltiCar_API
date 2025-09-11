@@ -127,7 +127,7 @@ class TaskRewardItem(BaseModel):
 
 class TaskRewards(BaseModel):
     experience_points: int
-    currency: int
+    currency: Optional[int] = 0
     item_rewards: Optional[List[TaskRewardItem]] = None
     unlock_vehicle_ids: Optional[List[str]] = None 
     unlock_destination_ids: Optional[List[str]] = None
@@ -144,7 +144,7 @@ class TaskDefinition(BaseModel):
     title: str
     # ... (rest of TaskDefinition fields)
     description: str
-    type: str
+    mode: str
     requirements: TaskRequirements
     rewards: TaskRewards
     pickup_items: Optional[List[TaskPickupItem]] = Field(default=None, description="Items to be given to the player upon accepting the task")
