@@ -3,44 +3,41 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
 from bson import ObjectId
+from pydantic_core import core_schema
 
-# --- PyObjectId Helper Type (Pydantic V1 compatible with schema modification) ---
+# --- PyObjectId Helper Type (Pydantic V2 compatible) ---
 class PyObjectId(ObjectId):
     @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
+    def __get_pydantic_core_schema__(cls, source_type, handler):
+        """Pydantic v2 compatible schema generation"""
+        return core_schema.with_info_before_validator_function(
+            cls.validate,
+            core_schema.str_schema(),
+            serialization=core_schema.to_string_ser_schema()
+        )
 
     @classmethod
-    def validate(cls, v): # Pydantic V1 signature
+    def validate(cls, v, info=None):
+        """Pydantic V2 signature with info parameter"""
         if isinstance(v, ObjectId):
             return v
-        if ObjectId.is_valid(v):
+        if isinstance(v, str) and ObjectId.is_valid(v):
             return ObjectId(v)
-        try:
-            if isinstance(v, str) and ObjectId.is_valid(v):
-                return ObjectId(v)
-        except TypeError:
-            pass
         raise ValueError(f"Not a valid ObjectId: {v}")
 
-    @classmethod
-    def __modify_schema__(cls, field_schema: Dict[str, Any]):
-        field_schema.update(type="string", example="60d5ec49e73e82f8e0e2f8b8")
+    
 
-# Common Config class for Pydantic V1 models
-class CommonConfig:
-    from_attributes = True 
-    populate_by_name = True
-    arbitrary_types_allowed = True
-    json_encoders = {
-        ObjectId: lambda o: str(o),
-        PyObjectId: lambda o: str(o)
-    }
+# Common model configuration for Pydantic V2
+COMMON_CONFIG = {
+    "from_attributes": True,
+    "populate_by_name": True,
+    "arbitrary_types_allowed": True
+}
 
 # --- Vehicle Models ---
 class VehicleDefinition(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    vehicle_id: str = Field(default_factory=lambda: str(uuid.uuid4()), unique=True, description="Custom unique vehicle definition ID (UUID string)")
+    vehicle_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Custom unique vehicle definition ID (UUID string)")
     name: str
     type: str
     description: Optional[str] = None
@@ -52,11 +49,11 @@ class VehicleDefinition(BaseModel):
     required_level_to_unlock: int = Field(default=1)
     icon_url: Optional[str] = None
     image_url: Optional[str] = None
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 class PlayerOwnedVehicle(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    instance_id: str = Field(default_factory=lambda: str(uuid.uuid4()), unique=True, description="Custom unique ID for this owned vehicle instance (UUID string)")
+    instance_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Custom unique ID for this owned vehicle instance (UUID string)")
     user_id: str # Refers to User.user_id (UUID string)
     vehicle_id: str # Foreign key to VehicleDefinition.vehicle_id (UUID string)
     # Renaming nickname back to vehicle_name
@@ -75,12 +72,12 @@ class PlayerOwnedVehicle(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now) # From screenshot
     last_updated: datetime = Field(default_factory=datetime.now) # From screenshot
 
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 # --- Item Models ---
 class ItemDefinition(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    item_id: str = Field(default_factory=lambda: str(uuid.uuid4()), unique=True, description="Custom unique item definition ID (UUID string)")
+    item_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Custom unique item definition ID (UUID string)")
     name: str
     # ... (rest of ItemDefinition fields)
     description: Optional[str] = None
@@ -93,22 +90,22 @@ class ItemDefinition(BaseModel):
     spoil_duration_hours: Optional[int] = None
     required_permit_type: Optional[str] = None
     icon_url: Optional[str] = None
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 class PlayerWarehouseItem(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    player_warehouse_item_id: str = Field(default_factory=lambda: str(uuid.uuid4()), unique=True, description="Custom unique ID for this warehouse item instance (UUID string)")
+    player_warehouse_item_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Custom unique ID for this warehouse item instance (UUID string)")
     user_id: str # Changed from player_id
     item_id: str 
     quantity: int
     last_updated_at: datetime = Field(default_factory=datetime.now)
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 # --- Task Models ---
 class TaskRequirementDeliverItem(BaseModel):
     item_id: str 
     quantity: int
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 class TaskRequirements(BaseModel):
     required_player_level: int = Field(default=1)
@@ -118,12 +115,12 @@ class TaskRequirements(BaseModel):
     required_vehicle_type: Optional[str] = None 
     time_limit_seconds: Optional[int] = None
     min_cargo_value: Optional[int] = None
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 class TaskRewardItem(BaseModel):
     item_id: str 
     quantity: int
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 class TaskRewards(BaseModel):
     experience_points: int
@@ -131,16 +128,16 @@ class TaskRewards(BaseModel):
     item_rewards: Optional[List[TaskRewardItem]] = None
     unlock_vehicle_ids: Optional[List[str]] = None 
     unlock_destination_ids: Optional[List[str]] = None
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 class TaskPickupItem(BaseModel):
     item_id: str
     quantity: int
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 class TaskDefinition(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    task_id: str = Field(default_factory=lambda: str(uuid.uuid4()), unique=True, description="Custom unique task definition ID (UUID string)")
+    task_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Custom unique task definition ID (UUID string)")
     title: str
     # ... (rest of TaskDefinition fields)
     description: str
@@ -154,21 +151,21 @@ class TaskDefinition(BaseModel):
     availability_end_date: Optional[datetime] = None
     prerequisite_task_ids: Optional[List[str]] = None 
     is_active: bool = Field(default=True)
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 class PlayerTaskProgressItem(BaseModel):
     item_id: str 
     delivered_quantity: int
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 class PlayerTaskProgress(BaseModel):
     items_delivered_count: Optional[List[PlayerTaskProgressItem]] = None
     distance_traveled_for_task: Optional[float] = None
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 class PlayerTask(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    player_task_id: str = Field(default_factory=lambda: str(uuid.uuid4()), unique=True, description="Custom unique ID for this player task instance (UUID string)")
+    player_task_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Custom unique ID for this player task instance (UUID string)")
     user_id: str # Changed from player_id
     task_id: str 
     # ... (rest of PlayerTask fields)
@@ -180,22 +177,22 @@ class PlayerTask(BaseModel):
     failed_at: Optional[datetime] = None
     abandoned_at: Optional[datetime] = None
     last_updated_at: datetime = Field(default_factory=datetime.now)
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 # --- Destination Models ---
 class GeoCoordinates(BaseModel):
     type: str = Field(default="Point")
     coordinates: List[float]
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 class DestinationUnlockRequirements(BaseModel):
     required_player_level: Optional[int] = None
     required_completed_task_id: Optional[str] = None 
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 class Destination(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    destination_id: str = Field(default_factory=lambda: str(uuid.uuid4()), unique=True, description="Custom unique destination ID (UUID string)")
+    destination_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Custom unique destination ID (UUID string)")
     name: str
     # ... (rest of Destination fields)
     description: Optional[str] = None
@@ -205,7 +202,7 @@ class Destination(BaseModel):
     unlock_requirements: Optional[DestinationUnlockRequirements] = None
     available_services: Optional[List[str]] = None
     icon_url: Optional[str] = None
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 # --- Game Session Models ---
 class VehicleSnapshot(BaseModel):
@@ -213,7 +210,7 @@ class VehicleSnapshot(BaseModel):
     type: str
     max_load_weight: float
     max_load_volume: float
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 class CargoItemSnapshot(BaseModel):
     item_id: str 
@@ -222,12 +219,12 @@ class CargoItemSnapshot(BaseModel):
     weight_per_unit: float
     volume_per_unit: float
     base_value_per_unit: int
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 class DestinationSnapshot(BaseModel):
     name: str
     region: str
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 class GameSessionOutcomeSummary(BaseModel):
     distance_traveled_km: Optional[float] = None
@@ -238,11 +235,11 @@ class GameSessionOutcomeSummary(BaseModel):
     earned_experience: Optional[int] = None
     earned_currency: Optional[int] = None
     penalties: Optional[int] = None
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 class GameSession(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    game_session_id: str = Field(default_factory=lambda: str(uuid.uuid4()), unique=True, description="Custom unique game session ID (UUID string)")
+    game_session_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Custom unique game session ID (UUID string)")
     user_id: str # Changed from player_id
     used_vehicle_id: str # This should refer to PlayerOwnedVehicle.instance_id (the custom UUID)
     # ... (rest of GameSession fields)
@@ -258,7 +255,7 @@ class GameSession(BaseModel):
     status: str
     outcome_summary: Optional[GameSessionOutcomeSummary] = None
     last_updated_at: datetime = Field(default_factory=datetime.now)
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 # --- New Game Loop Models ---
 
@@ -273,7 +270,7 @@ class CheckInPayload(BaseModel):
 
 class GameTask(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    task_id: str = Field(default_factory=lambda: str(uuid.uuid4()), unique=True)
+    task_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     station_id: str
     title: str
     description: str
@@ -282,15 +279,15 @@ class GameTask(BaseModel):
     destination_station_id: str
     created_at: datetime = Field(default_factory=datetime.now)
     is_active: bool = True
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 class GameEvent(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    event_id: str = Field(default_factory=lambda: str(uuid.uuid4()), unique=True)
+    event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
     description: str
     choices: List[str]
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 class ResolveEventPayload(BaseModel):
     event_id: str
@@ -299,13 +296,13 @@ class ResolveEventPayload(BaseModel):
 
 class ShopItem(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    item_id: str = Field(default_factory=lambda: str(uuid.uuid4()), unique=True)
+    item_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
     description: str
     price: int
     category: str
     icon_url: Optional[str] = None
-    Config = CommonConfig
+    model_config = COMMON_CONFIG
 
 class PurchasePayload(BaseModel):
     item_id: str

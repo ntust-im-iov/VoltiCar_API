@@ -47,7 +47,7 @@ async def get_user_vehicles(user_id: str):
     vehicles_cursor = db_provider.player_owned_vehicles_collection.find({"user_id": user_id})
     vehicles_list = await vehicles_cursor.to_list(length=None)
     
-    return [PlayerOwnedVehicle(**v) for v in vehicles_list]
+    return [PlayerOwnedVehicle.model_validate(v, from_attributes=True) for v in vehicles_list]
 
 
 @router.get("/{user_id}/{instance_id}", response_model=PlayerOwnedVehicle) # Changed path param from vehicle_id to instance_id
@@ -69,7 +69,7 @@ async def get_vehicle_info(user_id: str, instance_id: str): # Changed param name
     if not vehicle_doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定車輛")
 
-    return PlayerOwnedVehicle(**vehicle_doc)
+    return PlayerOwnedVehicle.model_validate(vehicle_doc, from_attributes=True)
 
 @router.post("/", response_model=PlayerOwnedVehicle, status_code=status.HTTP_201_CREATED)
 async def register_vehicle(
@@ -122,7 +122,7 @@ async def register_vehicle(
     if not created_doc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="車輛註冊失敗，無法讀取已創建記錄")
         
-    return PlayerOwnedVehicle(**created_doc)
+    return PlayerOwnedVehicle.model_validate(created_doc, from_attributes=True)
 
 
 # Combined update endpoint for vehicle (name, dynamic info)
@@ -158,7 +158,7 @@ async def update_player_vehicle_info(
     if not updated_doc: # Should not happen if matched_count > 0
         raise HTTPException(status_code=500, detail="更新車輛資訊後無法讀取記錄")
 
-    return PlayerOwnedVehicle(**updated_doc)
+    return PlayerOwnedVehicle.model_validate(updated_doc, from_attributes=True)
 
 # Note: The original file had duplicate get_user_vehicles, it's removed.
 # The old update_battery_info and update_vehicle are combined into update_player_vehicle_info.

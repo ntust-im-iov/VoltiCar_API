@@ -64,7 +64,7 @@ async def get_parkings_by_city(
         cached_data = await get_cache(redis, cache_key)
         if cached_data is not None:
             # 假設 cached_data 是 dict 列表，轉換為 ParkingSummary
-            return [ParkingSummary(**p) for p in cached_data]
+            return [ParkingSummary.model_validate(p, from_attributes=True) for p in cached_data]
 
     collection_name = CITY_MAPPING.get(city, city)
     logger.info(
@@ -115,44 +115,22 @@ async def get_parkings_by_city(
             elif isinstance(parking_name_data, str):
                 parking_name_str = parking_name_data
 
-            # 處理停車場位置資料
-            position_data = parking_data.get("CarParkPosition")
-            position_obj = None
-            if isinstance(position_data, dict):
-                # 過濾掉 None 值，只保留有效的位置資料
-                filtered_position_data = {
-                    k: v
-                    for k, v in position_data.items()
-                    if v is not None and k in ["PositionLat", "PositionLon"]
-                }
-                # 只有當有有效資料時才創建 CarParkPosition 物件
-                if filtered_position_data:
-                    try:
-                        position_obj = CarParkPosition(**filtered_position_data)
-                    except Exception as e:
-                        logger.warning(
-                            f"CarParkPosition 驗證失敗，ID: {parking_data.get('CarParkID')}, 錯誤: {e}"
-                        )
-                        position_obj = None
-
-            # 處理地址數據 - 支持字符串和字典格式
-            address_raw_from_db = parking_data.get("Address")
+            # 處理地址數據，兼容字典和純字串格式
+            address_raw = parking_data.get("Address")
             address_input_for_summary = None
-            if isinstance(address_raw_from_db, str):
-                # 直接使用字符串地址
-                address_input_for_summary = address_raw_from_db
-            elif isinstance(address_raw_from_db, dict):
-                # 如果是字典格式，嘗試提取中文地址
-                address_input_for_summary = address_raw_from_db.get("Zh_tw") or str(
-                    address_raw_from_db
-                )
-            # 如果是 None 就保持為 None
+            if isinstance(address_raw, dict):
+                address_input_for_summary = address_raw
+            elif isinstance(address_raw, str):
+                # 如果是純字串，將其包裝成 LocationAddress 期望的字典格式
+                # 假設純字串地址對應到 Road 欄位
+                address_input_for_summary = {"Road": address_raw}
 
             summary = ParkingSummary(
                 CarParkID=parking_data.get("CarParkID"),
                 CarParkName=parking_name_str,
                 Address=address_input_for_summary,
-                CarParkPosition=position_obj,
+                PositionLat=parking_data.get("CarParkPosition", {}).get("PositionLat"),
+                PositionLon=parking_data.get("CarParkPosition", {}).get("PositionLon"),
                 FareDescription=parking_data.get("FareDescription"),
             )
             response_data.append(summary)
@@ -161,7 +139,7 @@ async def get_parkings_by_city(
 
         if redis:
             await set_cache(
-                redis, cache_key, [p.dict() for p in response_data], expire=3600
+                redis, cache_key, [p.model_dump(by_alias=True, exclude_none=True) for p in response_data], expire=3600
             )
 
         return response_data
@@ -281,7 +259,7 @@ async def get_all_parkings_overview(
     if redis:
         cached_data = await get_cache(redis, cache_key)
         if cached_data is not None:
-            return [ParkingSummary(**p) for p in cached_data]
+            return [ParkingSummary.model_validate(p, from_attributes=True) for p in cached_data]
 
     try:
         query = {}
@@ -339,44 +317,22 @@ async def get_all_parkings_overview(
             elif isinstance(parking_name_data, str):
                 parking_name_str = parking_name_data
 
-            # 處理停車場位置資料
-            position_data = parking_data.get("CarParkPosition")
-            position_obj = None
-            if isinstance(position_data, dict):
-                # 過濾掉 None 值，只保留有效的位置資料
-                filtered_position_data = {
-                    k: v
-                    for k, v in position_data.items()
-                    if v is not None and k in ["PositionLat", "PositionLon"]
-                }
-                # 只有當有有效資料時才創建 CarParkPosition 物件
-                if filtered_position_data:
-                    try:
-                        position_obj = CarParkPosition(**filtered_position_data)
-                    except Exception as e:
-                        logger.warning(
-                            f"CarParkPosition 驗證失敗，ID: {parking_data.get('CarParkID')}, 錯誤: {e}"
-                        )
-                        position_obj = None
-
-            # 處理地址數據 - 支持字符串和字典格式
-            address_raw_from_db = parking_data.get("Address")
+            # 處理地址數據，兼容字典和純字串格式
+            address_raw = parking_data.get("Address")
             address_input_for_summary = None
-            if isinstance(address_raw_from_db, str):
-                # 直接使用字符串地址
-                address_input_for_summary = address_raw_from_db
-            elif isinstance(address_raw_from_db, dict):
-                # 如果是字典格式，嘗試提取中文地址
-                address_input_for_summary = address_raw_from_db.get("Zh_tw") or str(
-                    address_raw_from_db
-                )
-            # 如果是 None 就保持為 None
+            if isinstance(address_raw, dict):
+                address_input_for_summary = address_raw
+            elif isinstance(address_raw, str):
+                # 如果是純字串，將其包裝成 LocationAddress 期望的字典格式
+                # 假設純字串地址對應到 Road 欄位
+                address_input_for_summary = {"Road": address_raw}
 
             summary = ParkingSummary(
                 CarParkID=parking_data.get("CarParkID"),
                 CarParkName=parking_name_str,
                 Address=address_input_for_summary,
-                CarParkPosition=position_obj,
+                PositionLat=parking_data.get("CarParkPosition", {}).get("PositionLat"),
+                PositionLon=parking_data.get("CarParkPosition", {}).get("PositionLon"),
                 FareDescription=parking_data.get("FareDescription"),
             )
             response_data.append(summary)
@@ -388,7 +344,7 @@ async def get_all_parkings_overview(
 
         if redis:
             await set_cache(
-                redis, cache_key, [p.dict() for p in response_data], expire=3600
+                redis, cache_key, [p.model_dump(by_alias=True, exclude_none=True) for p in response_data], expire=3600
             )
 
         return response_data

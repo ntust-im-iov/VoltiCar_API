@@ -12,7 +12,7 @@ from fastapi import Query, Form # 引入 Form
 
 from app.models.user import (
     User, UserCreate, UserLogin, # LoginRecord is imported but not used as type hint/response model
-    FCMTokenUpdate, FriendAction, GoogleLoginRequest, BindRequest, VerifyBindingRequest
+    FCMTokenUpdate, FriendAction, GoogleLoginRequest, BindRequest, VerifyBindingRequest,
 ) # Removed LoginRecord model import
 from app.utils.auth import authenticate_user, create_access_token, get_current_user, get_password_hash
 # Import the email service from the app/services directory
@@ -25,6 +25,7 @@ from app.services.email_service import ( # Updated import path
 )
 from app.database import mongodb as db_provider # Import the module itself
 from app.models.user import EmailVerificationRequest, CompleteRegistrationRequest # 引入新的 Pydantic 模型
+from app.models.game_models import PlayerTask # 從 game_models 匯入 PlayerTask
 
 router = APIRouter(prefix="/users", tags=["用戶"])
 
@@ -660,13 +661,13 @@ async def get_user_tasks(user_id: str): # user_id here is the custom UUID string
     # or all available tasks with user-specific progress.
     # Let's assume it's about tasks the player has accepted (from PlayerTasks)
     # and then enrich with TaskDefinition details.
-
-    player_tasks_cursor = db_provider.player_tasks_collection.find({"player_id": user_id})
-    player_tasks_list = await player_tasks_cursor.to_list(length=None)
+    # 修正查詢欄位為 user_id
+    player_tasks_cursor = db_provider.player_tasks_collection.find({"user_id": user_id})
+    player_tasks_list = await player_tasks_cursor.to_list(length=100) # 限制長度
 
     enriched_tasks = []
     for pt_doc in player_tasks_list:
-        player_task = PlayerTask(**pt_doc) # player_task.task_id is the TaskDefinition.task_id (UUID)
+        player_task = PlayerTask.model_validate(pt_doc, from_attributes=True) # player_task.task_id is the TaskDefinition.task_id (UUID)
         
         task_def = await db_provider.task_definitions_collection.find_one({"task_id": player_task.task_id})
         if task_def:
@@ -676,7 +677,7 @@ async def get_user_tasks(user_id: str): # user_id here is the custom UUID string
                 "title": task_def.get("title", "N/A"),
                 "description": task_def.get("description", ""),
                 "status": player_task.status,
-                "progress": player_task.progress.dict() if player_task.progress else {}, # Convert progress model to dict
+                "progress": player_task.progress.model_dump() if player_task.progress else {}, # Convert progress model to dict
                 "rewards": task_def.get("rewards", {}) # From TaskDefinition
             })
         else:
@@ -687,11 +688,12 @@ async def get_user_tasks(user_id: str): # user_id here is the custom UUID string
                 "title": "任務定義未找到",
                 "description": "相關任務定義已不存在。",
                 "status": player_task.status,
-                "progress": player_task.progress.dict() if player_task.progress else {},
+                "progress": player_task.progress.model_dump() if player_task.progress else {},
                 "rewards": {}
             })
             
-    return {"status": "success", "msg": "獲取任務列表成功", "tasks": user_tasks}
+    # 修正返回的變數名稱
+    return {"status": "success", "msg": "獲取任務列表成功", "tasks": enriched_tasks}
 
 @router.get("/achievements", response_model=Dict[str, Any])
 async def get_user_achievements(user_id: str):

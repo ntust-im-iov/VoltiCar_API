@@ -7,9 +7,10 @@ from datetime import datetime
 from app.models.user import User, CurrentGameSessionSetup, CurrentGameSessionSetupItem
 from app.models.game_models import (
     VehicleDefinition, PlayerOwnedVehicle, ItemDefinition, Destination, 
-    GameSession, PlayerTask, TaskDefinition, BaseModel, # BaseModel for request/response models if not inheriting from pydantic.BaseModel directly
+    GameSession, PlayerTask, TaskDefinition, # Removed BaseModel - import from pydantic instead
     GeoCoordinates, VehicleSnapshot, CargoItemSnapshot, DestinationSnapshot # Ensure all are imported
 )
+from pydantic import BaseModel  # BaseModel for request/response models
 from app.database import mongodb as db_provider
 from app.utils.auth import get_current_user 
 
@@ -85,7 +86,7 @@ async def list_player_selectable_vehicles(
     
     owned_vehicle_map: Dict[str, PlayerOwnedVehicle] = {}  # Key: vehicle_id (definition's ID), Value: PlayerOwnedVehicle instance
     for pov_doc in player_owned_vehicle_docs:
-        pov = PlayerOwnedVehicle(**pov_doc)
+        pov = PlayerOwnedVehicle.model_validate(pov_doc, from_attributes=True)
         # PlayerOwnedVehicle.vehicle_id is now the foreign key to VehicleDefinition.vehicle_id
         owned_vehicle_map[pov.vehicle_id] = pov
 
@@ -93,7 +94,7 @@ async def list_player_selectable_vehicles(
     
     response_vehicles: List[PlayerVehicleResponseItem] = []
     for vd_doc in all_vehicle_definitions_docs:
-        vd = VehicleDefinition(**vd_doc) # vd.vehicle_id is the definition's unique ID
+        vd = VehicleDefinition.model_validate(vd_doc, from_attributes=True) # vd.vehicle_id is the definition's unique ID
         vehicle_status = "unavailable"
         player_vehicle_instance_id: Optional[str] = None # This will be PlayerOwnedVehicle.instance_id
 
@@ -133,7 +134,7 @@ async def list_player_selectable_destinations(
 
     selectable_destinations: List[Destination] = []
     for dest_doc in all_destinations_list:
-        dest = Destination(**dest_doc)
+        dest = Destination.model_validate(dest_doc, from_attributes=True)
         unlocked = False
         if dest.is_unlocked_by_default:
             unlocked = True
@@ -180,7 +181,7 @@ async def list_player_warehouse_items(current_user: User = Depends(get_current_u
         {"item_id": {"$in": item_ids_in_warehouse}}
     )
     item_definitions_map: Dict[str, ItemDefinition] = {
-        item_def_doc["item_id"]: ItemDefinition(**item_def_doc)
+        item_def_doc["item_id"]: ItemDefinition.model_validate(item_def_doc, from_attributes=True)
         async for item_def_doc in item_definitions_cursor
     }
 
@@ -237,13 +238,13 @@ async def select_cargo_for_session(
     user_doc = await db_provider.users_collection.find_one({"user_id": current_user.user_id})
     if not user_doc: raise HTTPException(status_code=500, detail="無法獲取用戶數據")
     
-    session_setup = CurrentGameSessionSetup(**(user_doc.get("current_game_session_setup") or {}))
+    session_setup = CurrentGameSessionSetup.model_validate((user_doc.get("current_game_session_setup", from_attributes=True) or {}))
     if not session_setup.selected_vehicle_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="請先選擇車輛才能選擇貨物")
     
     vehicle_def_doc = await db_provider.vehicle_definitions_collection.find_one({"vehicle_id": session_setup.selected_vehicle_id})
     if not vehicle_def_doc: raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="所選車輛定義無效")
-    vehicle_def = VehicleDefinition(**vehicle_def_doc)
+    vehicle_def = VehicleDefinition.model_validate(vehicle_def_doc, from_attributes=True)
 
     selected_cargo_items_to_store: List[CurrentGameSessionSetupItem] = []
     response_cargo_details: List[SelectedCargoItemDetail] = []
@@ -256,7 +257,7 @@ async def select_cargo_for_session(
     
     item_defs_cursor = db_provider.item_definitions_collection.find({"item_id": {"$in": requested_item_ids}})
     item_definitions_map: Dict[str, ItemDefinition] = {
-        doc["item_id"]: ItemDefinition(**doc) async for doc in item_defs_cursor
+        doc["item_id"]: ItemDefinition.model_validate(doc, from_attributes=True) async for doc in item_defs_cursor
     }
     
     warehouse_items_cursor = db_provider.player_warehouse_items_collection.find({
@@ -351,7 +352,7 @@ async def select_destination_for_session(
     dest_doc = await db_provider.destinations_collection.find_one({"destination_id": destination_uuid_to_select})
     if not dest_doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="選擇的目的地不存在")
-    destination = Destination(**dest_doc)
+    destination = Destination.model_validate(dest_doc, from_attributes=True)
 
     # Verify player can select this destination (already done implicitly by list_player_selectable_destinations, but good to double check)
     can_select = False
@@ -369,7 +370,7 @@ async def select_destination_for_session(
     if not user_doc: raise HTTPException(status_code=500, detail="無法獲取用戶數據") # Should not happen
 
     session_setup_data = user_doc.get("current_game_session_setup")
-    current_session_setup = CurrentGameSessionSetup(**session_setup_data) if session_setup_data else CurrentGameSessionSetup()
+    current_session_setup = CurrentGameSessionSetup.model_validate(session_setup_data, from_attributes=True) if session_setup_data else CurrentGameSessionSetup()
     
     current_session_setup.selected_destination_id = destination.destination_id
     current_session_setup.last_updated_at = datetime.now()
@@ -402,7 +403,7 @@ async def select_vehicle_for_session(
     vehicle_def_doc = await db_provider.vehicle_definitions_collection.find_one({"vehicle_id": vehicle_def_uuid_to_select})
     if not vehicle_def_doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="選擇的車輛定義不存在")
-    vehicle_def = VehicleDefinition(**vehicle_def_doc)
+    vehicle_def = VehicleDefinition.model_validate(vehicle_def_doc, from_attributes=True)
 
     can_use_vehicle = False
     # Query PlayerOwnedVehicle using user_id and vehicle_id (which is the foreign key to VehicleDefinition)
@@ -412,7 +413,7 @@ async def select_vehicle_for_session(
     })
 
     if player_owned_vehicle_doc:
-        owned_vehicle = PlayerOwnedVehicle(**player_owned_vehicle_doc)
+        owned_vehicle = PlayerOwnedVehicle.model_validate(player_owned_vehicle_doc, from_attributes=True)
         if not owned_vehicle.is_in_active_session: can_use_vehicle = True
         else: raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="此車輛正在使用中")
     elif "rentable" in vehicle_def.availability_type: can_use_vehicle = True # Simplified
@@ -424,7 +425,7 @@ async def select_vehicle_for_session(
     if not user_doc: raise HTTPException(status_code=500, detail="無法獲取用戶數據")
 
     session_setup_data = user_doc.get("current_game_session_setup")
-    current_session_setup = CurrentGameSessionSetup(**session_setup_data) if session_setup_data else CurrentGameSessionSetup()
+    current_session_setup = CurrentGameSessionSetup.model_validate(session_setup_data, from_attributes=True) if session_setup_data else CurrentGameSessionSetup()
     
     cleared_cargo_flag = bool(current_session_setup.selected_cargo)
     current_session_setup.selected_vehicle_id = vehicle_def.vehicle_id
@@ -466,14 +467,14 @@ async def get_game_session_summary(current_user: User = Depends(get_current_user
     user_doc = await db_provider.users_collection.find_one({"user_id": current_user.user_id})
     if not user_doc: raise HTTPException(status_code=500, detail="無法獲取用戶數據")
     
-    current_session_setup = CurrentGameSessionSetup(**(user_doc.get("current_game_session_setup") or {}))
+    current_session_setup = CurrentGameSessionSetup.model_validate((user_doc.get("current_game_session_setup", from_attributes=True) or {}))
     summary_main = SessionSummaryMain()
     can_start_game_flag = True; warnings: List[str] = []
 
     if current_session_setup.selected_vehicle_id:
         vd_doc = await db_provider.vehicle_definitions_collection.find_one({"vehicle_id": current_session_setup.selected_vehicle_id})
         if vd_doc:
-            vd = VehicleDefinition(**vd_doc)
+            vd = VehicleDefinition.model_validate(vd_doc, from_attributes=True)
             summary_main.selected_vehicle = SessionSummaryVehicle(
                 vehicle_id=vd.vehicle_id, 
                 name=vd.name, max_load_weight=vd.max_load_weight, max_load_volume=vd.max_load_volume
@@ -487,7 +488,7 @@ async def get_game_session_summary(current_user: User = Depends(get_current_user
         for cargo_item_setup in current_session_setup.selected_cargo:
             item_def_doc = await db_provider.item_definitions_collection.find_one({"item_id": cargo_item_setup.item_id})
             if item_def_doc:
-                item_def = ItemDefinition(**item_def_doc)
+                item_def = ItemDefinition.model_validate(item_def_doc, from_attributes=True)
                 summary_cargo_items.append(SessionSummaryCargoItem(
                     item_id=item_def.item_id, 
                     name=item_def.name, quantity=cargo_item_setup.quantity,
@@ -505,7 +506,7 @@ async def get_game_session_summary(current_user: User = Depends(get_current_user
     if current_session_setup.selected_destination_id:
         dest_doc = await db_provider.destinations_collection.find_one({"destination_id": current_session_setup.selected_destination_id})
         if dest_doc:
-            dest = Destination(**dest_doc)
+            dest = Destination.model_validate(dest_doc, from_attributes=True)
             summary_main.selected_destination = SessionSummaryDestination(destination_id=dest.destination_id, name=dest.name, region=dest.region)
         else: can_start_game_flag = False; warnings.append("選擇的目的地無效。")
     else: can_start_game_flag = False; warnings.append("尚未選擇目的地。")
@@ -516,10 +517,10 @@ async def get_game_session_summary(current_user: User = Depends(get_current_user
     }).to_list(length=None)
 
     for pt_doc in player_accepted_tasks_docs:
-        pt = PlayerTask(**pt_doc) 
+        pt = PlayerTask.model_validate(pt_doc, from_attributes=True) 
         task_def_doc = await db_provider.task_definitions_collection.find_one({"task_id": pt.task_id})
         if not task_def_doc: continue
-        task_def = TaskDefinition(**task_def_doc)
+        task_def = TaskDefinition.model_validate(task_def_doc, from_attributes=True)
         related_tasks_summary.append(RelatedTaskSummary(
             player_task_id=pt.player_task_id, 
             task_id=pt.task_id, 
@@ -564,17 +565,17 @@ async def start_game_session(
         })
         if active_session: raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="玩家已有正在進行的遊戲會話")
 
-    session_setup = CurrentGameSessionSetup(**(user_doc.get("current_game_session_setup") or {}))
+    session_setup = CurrentGameSessionSetup.model_validate((user_doc.get("current_game_session_setup", from_attributes=True) or {}))
     if not session_setup.selected_vehicle_id or not session_setup.selected_destination_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="必須選擇車輛和目的地才能開始遊戲")
 
     vehicle_def_doc = await db_provider.vehicle_definitions_collection.find_one({"vehicle_id": session_setup.selected_vehicle_id})
     if not vehicle_def_doc: raise HTTPException(status_code=400, detail="選擇的車輛無效")
-    vehicle_def = VehicleDefinition(**vehicle_def_doc)
+    vehicle_def = VehicleDefinition.model_validate(vehicle_def_doc, from_attributes=True)
 
     destination_def_doc = await db_provider.destinations_collection.find_one({"destination_id": session_setup.selected_destination_id})
     if not destination_def_doc: raise HTTPException(status_code=400, detail="選擇的目的地無效")
-    destination_def = Destination(**destination_def_doc)
+    destination_def = Destination.model_validate(destination_def_doc, from_attributes=True)
     
     cargo_snapshot_items_models: List[CargoItemSnapshot] = []
     # ... (Assume cargo processing populates cargo_snapshot_items_models correctly using custom item_ids)
@@ -586,18 +587,18 @@ async def start_game_session(
         "vehicle_id": vehicle_def.vehicle_id # Querying PlayerOwnedVehicle by its foreign key to VehicleDefinition
     })
     if owned_vehicle_instance_doc:
-        owned_vehicle = PlayerOwnedVehicle(**owned_vehicle_instance_doc)
+        owned_vehicle = PlayerOwnedVehicle.model_validate(owned_vehicle_instance_doc, from_attributes=True)
         final_used_vehicle_id = owned_vehicle.instance_id # Use the specific instance_id if owned
 
     new_game_session_instance = GameSession(
         user_id=current_user.user_id, # Changed from player_id
         used_vehicle_id=final_used_vehicle_id, 
-        vehicle_snapshot=VehicleSnapshot(**vehicle_def.dict(exclude={'id', 'vehicle_id'})), 
+        vehicle_snapshot=VehicleSnapshot.model_validate(vehicle_def.dict(exclude={'id', 'vehicle_id'})), 
         cargo_snapshot=cargo_snapshot_items_models, 
         total_cargo_weight_at_start=0, # Placeholder
         total_cargo_volume_at_start=0, # Placeholder
         destination_id=destination_def.destination_id, 
-        destination_snapshot=DestinationSnapshot(**destination_def.dict(include={'name', 'region'})),
+        destination_snapshot=DestinationSnapshot.model_validate(destination_def.dict(include={'name', 'region'})),
         associated_player_task_ids=request_body.confirmed_player_task_ids if request_body else [], 
         start_time=datetime.now(), status="in_progress", last_updated_at=datetime.now()
     )
@@ -606,7 +607,7 @@ async def start_game_session(
     
     created_session_doc = await db_provider.game_sessions_collection.find_one({"_id": insert_session_res.inserted_id})
     if not created_session_doc: raise HTTPException(500, "Failed to create game session")
-    created_game_session = GameSession(**created_session_doc)
+    created_game_session = GameSession.model_validate(created_session_doc, from_attributes=True)
 
     await db_provider.users_collection.update_one(
         {"user_id": current_user.user_id},
