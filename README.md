@@ -50,6 +50,14 @@
     - `POST /users/redeem-reward`: 使用積分兌換獎勵。
     - `GET /users/inventory`: 查看用戶物品庫。
 - **推播通知**：使用 Firebase Cloud Messaging (FCM) 向用戶發送推播通知 (部分功能開發中)。
+- **Admin Panel 管理後台**：
+    - 基於 FastAPI 和 Bootstrap 5 的現代化管理界面
+    - 支援用戶管理、車輛定義、物品定義、任務定義、目的地、遊戲事件和商店物品管理
+    - 具備完整的 CRUD 功能（新增、查看、編輯、刪除）
+    - 實時統計儀表板，顯示各模組數據量統計
+    - 搜尋和篩選功能，提升管理效率
+    - 使用 HTTP Basic Auth 進行身份驗證
+    - 響應式設計，支援桌面和行動裝置
 
 ## 技術棧
 
@@ -83,7 +91,8 @@ volticar_api/
 │   │
 │   ├── models/             # Pydantic 數據模型
 │   │   ├── user.py         # 用戶相關模型 (包含註冊、登入、OTP、FCM等)
-│   │   └── station.py      # 充電站模型
+│   │   ├── station.py      # 充電站模型
+│   │   └── game_models.py  # 遊戲相關模型 (車輛、物品、任務、目的地、遊戲事件、商店物品等)
 │   │
 │   ├── services/           # 外部服務客戶端
 │   │   └── email_service.py # 異步郵件發送服務
@@ -92,6 +101,18 @@ volticar_api/
 │   └── utils/              # 工具函數
 │       ├── auth.py         # 認證 (密碼哈希, JWT, 用戶依賴)
 │       └── helpers.py      # 其他輔助函數
+│
+├── admin.py                # Admin Panel 管理後台主程式
+├── admin_templates/        # Admin Panel 模板目錄
+│   ├── base.html           # 基礎模板
+│   ├── dashboard.html      # 統計儀表板
+│   ├── list.html           # 通用列表模板
+│   ├── add_vehicle.html    # 新增/編輯車輛表單
+│   ├── add_item.html       # 新增/編輯物品表單
+│   ├── add_task.html       # 新增/編輯任務表單
+│   ├── add_destination.html # 新增/編輯目的地表單
+│   ├── add_game_event.html # 新增/編輯遊戲事件表單
+│   └── add_shop_item.html  # 新增/編輯商店物品表單
 │
 ├── data/                   # 數據目錄 (用於存放 user_github_mappings.json 等)
 ├── logs/                   # 日誌文件目錄 (由 logging 配置產生)
@@ -140,6 +161,25 @@ volticar_api/
     uvicorn main:app --host 0.0.0.0 --port 22000 --reload
     ```
     *   `--reload` 會在代碼變更時自動重啟服務，適合開發。
+
+### 訪問 Admin Panel
+
+啟動服務後，可以透過以下方式訪問管理後台：
+
+- **URL**: `http://localhost:22000/admin/`
+- **認證**: 使用 HTTP Basic Auth
+  - 預設管理員帳號：`Volticar`
+  - 預設密碼：`REMOVED_PASSWORD`
+
+Admin Panel 提供以下功能：
+- **統計儀表板**：顯示各模組的數據統計和快速操作
+- **用戶管理**：查看和管理註冊用戶
+- **車輛定義管理**：新增、編輯、刪除車輛類型
+- **物品定義管理**：管理遊戲中的物品類型
+- **任務定義管理**：配置遊戲任務
+- **目的地管理**：管理遊戲地點
+- **遊戲事件管理**：配置隨機事件
+- **商店物品管理**：管理商店中的商品
 
 ### 使用 Docker 部署
 
@@ -236,6 +276,16 @@ API 使用 FastAPI 自動生成交互式文檔。服務運行後，訪問 `/docs
     - `GET /stations/city/{city}`: 按城市查詢 API。
 
 - `GET /health`: 健康檢查
+- **Admin Panel (`/admin` prefix):**
+    - `GET /admin/`: 管理後台儀表板
+    - `GET /admin/users`: 用戶管理列表
+    - `GET /admin/vehicles`: 車輛定義管理
+    - `GET /admin/items`: 物品定義管理
+    - `GET /admin/tasks`: 任務定義管理
+    - `GET /admin/destinations`: 目的地管理
+    - `GET /admin/game-events`: 遊戲事件管理
+    - `GET /admin/shop-items`: 商店物品管理
+    - 各模組的新增、編輯、刪除功能
 
 ## 充電站地圖 API 優化與使用建議
 
@@ -329,3 +379,32 @@ API 使用 FastAPI 自動生成交互式文檔。服務運行後，訪問 `/docs
 - **錯誤處理**: API 包含詳細的錯誤處理和 HTTP 狀態碼，客戶端應妥善處理。
 - **異步處理**: 大量使用了 Python 的 `async/await` 語法，確保 I/O 操作 (如數據庫查詢、郵件發送) 不會阻塞事件循環。
 - **數據庫索引**: `app/database/mongodb.py` 中會自動創建必要的索引以優化查詢性能。
+- **Admin Panel 安全**: 預設的管理員帳號和密碼僅適用於開發環境，生產環境請務必修改預設密碼或使用更安全的認證機制。
+
+## Admin Panel 使用說明
+
+### 功能特色
+
+1. **響應式設計**: 支援桌面和行動裝置訪問
+2. **統計儀表板**: 實時顯示各模組的數據統計
+3. **搜尋和篩選**: 快速定位所需資料
+4. **批量操作**: 支援多選和批量處理
+5. **表單驗證**: 完整的數據驗證和錯誤處理
+6. **視覺回饋**: 豐富的動畫效果和狀態提示
+
+### 管理模組
+
+- **用戶管理**: 查看註冊用戶資訊、等級、註冊時間等
+- **車輛定義**: 管理遊戲中的車輛類型、規格、解鎖條件
+- **物品定義**: 配置遊戲物品的屬性、重量、價值等
+- **任務定義**: 設置遊戲任務的需求、獎勵、重複性等
+- **目的地管理**: 管理遊戲地點、座標、服務項目
+- **遊戲事件**: 配置隨機事件、選擇項和效果
+- **商店物品**: 管理商店商品、價格、限制等
+
+### 安全考慮
+
+- 使用 HTTP Basic Auth 進行身份驗證
+- 密碼經過 bcrypt 哈希處理
+- 所有操作都有日誌記錄
+- 支援 CSRF 保護（建議生產環境啟用）
