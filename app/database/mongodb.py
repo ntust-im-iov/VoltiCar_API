@@ -264,7 +264,7 @@ async def initialize_db_and_collections():
         # task_definitions_collection (points to "TaskDefinitions")
         print("任務定義 (TaskDefinitions) 集合索引:")
         await safely_create_index(task_definitions_collection, "task_id", unique=True)
-        await safely_create_index(task_definitions_collection, "type")
+        await safely_create_index(task_definitions_collection, "mode")
         await safely_create_index(task_definitions_collection, "is_active")
 
         print("成就 (Achievements) 集合索引:")

@@ -16,7 +16,7 @@ player_task_router = APIRouter(prefix="/player/tasks", tags=["玩家任務 (Play
 
 @task_definition_router.get("/", response_model=List[TaskDefinition])
 async def list_available_tasks(
-    type: Optional[str] = None,
+    mode: Optional[str] = None,
 ):
     """
     獲取當前可供選擇的任務列表。
@@ -25,8 +25,8 @@ async def list_available_tasks(
         raise HTTPException(status_code=503, detail="任務定義資料庫服務未初始化")
 
     query: Dict[str, Any] = {"is_active": True}
-    if type:
-        query["type"] = type
+    if mode:
+        query["mode"] = mode
     
     now = datetime.now()
     query["$or"] = [
