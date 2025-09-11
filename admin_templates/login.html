@@ -1,0 +1,26 @@
+{% extends "login.html" %}
+
+{% block title %}VoltiCar 管理後台 - 登入{% endblock %}
+
+{% block extra_style %}
+<style>
+    body {
+        background-color: #f8f9fa;
+    }
+    .card {
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .btn-primary {
+        background-color: #28a745;
+        border-color: #28a745;
+    }
+    .btn-primary:hover {
+        background-color: #218838;
+        border-color: #1e7e34;
+    }
+</style>
+{% endblock %}
+
+{% block logo %}
+<img src="{{ login_logo_url or 'https://preview.tabler.io/static/logo-white.svg' }}" alt="VoltiCar Logo" width="110" height="32">
+{% endblock %}

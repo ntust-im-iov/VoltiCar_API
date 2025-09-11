@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+
+{% block title %}新增遊戲事件 - Volticar 管理面板{% endblock %}
+
+{% block content %}
+<!-- 頁面標題 -->
+<div class="page-header fade-in">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/admin/" class="text-white">儀表板</a></li>
+            <li class="breadcrumb-item"><a href="/admin/game_events" class="text-white">遊戲事件</a></li>
+            <li class="breadcrumb-item active text-white">新增遊戲事件</li>
+        </ol>
+    </nav>
+    <h1><i class="fas fa-calendar-alt"></i> 新增遊戲事件</h1>
+    <p class="mb-0">建立遊戲中的隨機事件和選擇情境</p>
+</div>
+
+<!-- 錯誤訊息 -->
+{% if error %}
+<div class="alert alert-danger fade-in" role="alert">
+    <i class="fas fa-exclamation-triangle"></i> {{ error }}
+</div>
+{% endif %}
+
+<!-- 表單 -->
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card fade-in">
+            <div class="card-header">
+                <h5><i class="fas fa-plus-circle"></i> 遊戲事件資訊</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" id="eventForm" novalidate>
+                    <div class="row g-3">
+                        <!-- 基本資訊 -->
+                        <div class="col-12">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-info-circle"></i> 基本資訊</h6>
+                        </div>
+                        
+                        <div class="col-12">
+                            <label for="name" class="form-label">事件名稱 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="name" name="name" 
+                                   value="{{ form_data.name if form_data else '' }}" required
+                                   placeholder="例: 路況突發狀況">
+                            <div class="invalid-feedback">請輸入事件名稱</div>
+                        </div>
+                        
+                        <div class="col-12">
+                            <label for="description" class="form-label">事件描述 <span class="text-danger">*</span></label>
+                            <textarea class="form-control" id="description" name="description" rows="4" required
+                                      placeholder="詳細描述事件的情境和背景">{{ form_data.description if form_data else '' }}</textarea>
+                            <div class="invalid-feedback">請輸入事件描述</div>
+                        </div>
+                        
+                        <!-- 選擇選項 -->
+                        <div class="col-12 mt-4">
+                            <h6 class="text-muted border-bottom pb-2">
+                                <i class="fas fa-list"></i> 選擇選項 
+                                <button type="button" class="btn btn-sm btn-outline-primary ms-2" id="add-choice">
+                                    <i class="fas fa-plus"></i> 新增選項
+                                </button>
+                            </h6>
+                        </div>
+                        
+                        <div class="col-12">
+                            <div id="choices-container">
+                                <!-- 預設至少兩個選項 -->
+                                <div class="choice-item mb-3">
+                                    <div class="row g-2">
+                                        <div class="col-10">
+                                            <input type="text" class="form-control choice-input" 
+                                                   placeholder="選項 1 的文字" required>
+                                        </div>
+                                        <div class="col-2">
+                                            <button type="button" class="btn btn-outline-danger w-100" onclick="removeChoice(this)" disabled>
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <small class="text-muted">玩家可以選擇的第一個選項</small>
+                                </div>
+                                
+                                <div class="choice-item mb-3">
+                                    <div class="row g-2">
+                                        <div class="col-10">
+                                            <input type="text" class="form-control choice-input" 
+                                                   placeholder="選項 2 的文字" required>
+                                        </div>
+                                        <div class="col-2">
+                                            <button type="button" class="btn btn-outline-danger w-100" onclick="removeChoice(this)" disabled>
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <small class="text-muted">玩家可以選擇的第二個選項</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 事件設定 -->
+                        <div class="col-12 mt-4">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-cog"></i> 事件設定</h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="trigger_probability" class="form-label">觸發機率 (%)</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="trigger_probability" 
+                                       name="trigger_probability" min="1" max="100" value="10" placeholder="10">
+                                <span class="input-group-text">%</span>
+                            </div>
+                            <small class="text-muted">事件在適當時機觸發的機率 (1-100%)</small>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="event_category" class="form-label">事件類別</label>
+                            <select class="form-select select2" id="event_category" name="event_category">
+                                <option value="交通">交通狀況</option>
+                                <option value="天氣">天氣變化</option>
+                                <option value="車輛">車輛問題</option>
+                                <option value="客戶">客戶相關</option>
+                                <option value="道路">道路狀況</option>
+                                <option value="隨機">隨機事件</option>
+                                <option value="緊急">緊急情況</option>
+                            </select>
+                        </div>
+                        
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="is_active" name="is_active" checked>
+                                <label class="form-check-label" for="is_active">
+                                    <i class="fas fa-play"></i> 立即啟用事件
+                                </label>
+                                <div class="form-text">勾選後此事件將會在遊戲中出現</div>
+                            </div>
+                        </div>
+                        
+                        <!-- 預覽區域 -->
+                        <div class="col-12 mt-4">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-eye"></i> 預覽</h6>
+                        </div>
+                        
+                        <div class="col-12">
+                            <div class="alert alert-light border" id="event-preview">
+                                <h6 id="preview-title">事件名稱</h6>
+                                <p id="preview-description">事件描述會顯示在這裡...</p>
+                                <div id="preview-choices">
+                                    <p><strong>可選擇的選項：</strong></p>
+                                    <ul id="preview-choices-list">
+                                        <li>選項會顯示在這裡</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 按鈕區域 -->
+                        <div class="col-12 mt-4 pt-3 border-top">
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-info">
+                                    <i class="fas fa-save"></i> 儲存遊戲事件
+                                </button>
+                                <a href="/admin/game_events" class="btn btn-secondary">
+                                    <i class="fas fa-arrow-left"></i> 返回列表
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let choiceCounter = 2;
+
+$(document).ready(function() {
+    // 新增選項
+    $('#add-choice').on('click', function() {
+        addChoice();
+    });
+    
+    // 實時預覽
+    $('#name, #description').on('input', updatePreview);
+    $(document).on('input', '.choice-input', updatePreview);
+    
+    // 初始化預覽
+    updatePreview();
+    
+    // 表單提交處理
+    $('#eventForm').on('submit', function(e) {
+        const choices = [];
+        $('.choice-input').each(function() {
+            const choiceText = $(this).val().trim();
+            if (choiceText) {
+                choices.push(choiceText);
+            }
+        });
+        
+        if (choices.length < 2) {
+            e.preventDefault();
+            alert('至少需要兩個選項');
+            return false;
+        }
+        
+        // 添加選項到表單
+        $('<input>').attr({
+            type: 'hidden',
+            name: 'choices',
+            value: JSON.stringify(choices)
+        }).appendTo('#eventForm');
+    });
+});
+
+function addChoice() {
+    choiceCounter++;
+    const html = `
+        <div class="choice-item mb-3">
+            <div class="row g-2">
+                <div class="col-10">
+                    <input type="text" class="form-control choice-input" 
+                           placeholder="選項 ${choiceCounter} 的文字" required>
+                </div>
+                <div class="col-2">
+                    <button type="button" class="btn btn-outline-danger w-100" onclick="removeChoice(this)">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+            <small class="text-muted">玩家可以選擇的第 ${choiceCounter} 個選項</small>
+        </div>
+    `;
+    $('#choices-container').append(html);
+    updateDeleteButtons();
+    updatePreview();
+}
+
+function removeChoice(button) {
+    $(button).closest('.choice-item').remove();
+    updateDeleteButtons();
+    updatePreview();
+}
+
+function updateDeleteButtons() {
+    const choiceItems = $('.choice-item');
+    choiceItems.find('button').prop('disabled', choiceItems.length <= 2);
+}
+
+function updatePreview() {
+    const title = $('#name').val() || '事件名稱';
+    const description = $('#description').val() || '事件描述會顯示在這裡...';
+    
+    $('#preview-title').text(title);
+    $('#preview-description').text(description);
+    
+    const choicesList = $('#preview-choices-list');
+    choicesList.empty();
+    
+    let hasChoices = false;
+    $('.choice-input').each(function() {
+        const choiceText = $(this).val().trim();
+        if (choiceText) {
+            choicesList.append(`<li>${choiceText}</li>`);
+            hasChoices = true;
+        }
+    });
+    
+    if (!hasChoices) {
+        choicesList.append('<li>選項會顯示在這裡</li>');
+    }
+}
+</script>
+{% endblock %}

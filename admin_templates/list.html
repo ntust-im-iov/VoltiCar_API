@@ -1,0 +1,415 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - Volticar 管理面板{% endblock %}
+
+{% block content %}
+<!-- 頁面標題 -->
+<div class="page-header fade-in">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/admin/" class="text-white">儀表板</a></li>
+            <li class="breadcrumb-item active text-white">{{ title }}</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1>
+                {% if collection == 'users' %}<i class="fas fa-users"></i>
+                {% elif collection == 'vehicles' %}<i class="fas fa-car"></i>
+                {% elif collection == 'items' %}<i class="fas fa-boxes"></i>
+                {% elif collection == 'tasks' %}<i class="fas fa-tasks"></i>
+                {% elif collection == 'destinations' %}<i class="fas fa-map-marker-alt"></i>
+                {% elif collection == 'game-events' %}<i class="fas fa-calendar-alt"></i>
+                {% elif collection == 'shop-items' %}<i class="fas fa-shopping-cart"></i>
+                {% else %}<i class="fas fa-list"></i>
+                {% endif %}
+                {{ title }}
+            </h1>
+            <p class="mb-0">共 {{ items|length }} 筆資料</p>
+        </div>
+        <div>
+            {% if collection != 'users' %}
+            <a href="/admin/{{ collection }}/add" class="btn btn-primary">
+                <i class="fas fa-plus"></i> 新增{{ 
+                    '車輛' if collection == 'vehicles' else
+                    '物品' if collection == 'items' else
+                    '任務' if collection == 'tasks' else
+                    '目的地' if collection == 'destinations' else
+                    '事件' if collection == 'game-events' else
+                    '商品' if collection == 'shop-items' else
+                    '項目'
+                }}
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- 搜尋和篩選 -->
+<div class="row mb-4 fade-in">
+    <div class="col-lg-6">
+        <div class="input-group">
+            <span class="input-group-text"><i class="fas fa-search"></i></span>
+            <input type="text" class="form-control" id="searchInput" placeholder="搜尋{{ title }}...">
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="d-flex gap-2">
+            <select class="form-select" id="filterSelect" style="max-width: 200px;">
+                <option value="">所有項目</option>
+                {% if collection == 'vehicles' %}
+                <option value="轎車">轎車</option>
+                <option value="休旅車">休旅車</option>
+                <option value="貨車">貨車</option>
+                <option value="卡車">卡車</option>
+                {% elif collection == 'items' %}
+                <option value="食品">食品</option>
+                <option value="電子產品">電子產品</option>
+                <option value="家具">家具</option>
+                <option value="其他">其他</option>
+                {% endif %}
+            </select>
+            <button class="btn btn-outline-secondary" onclick="refreshData()">
+                <i class="fas fa-sync-alt"></i> 重新整理
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- 資料列表 -->
+<div class="card fade-in">
+    <div class="card-header">
+        <h5><i class="fas fa-table"></i> {{ title }}列表</h5>
+    </div>
+    <div class="card-body">
+        {% if items %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        {% if collection == 'users' %}
+                        <th>用戶ID</th>
+                        <th>用戶名稱</th>
+                        <th>電子郵件</th>
+                        <th>等級</th>
+                        <th>註冊時間</th>
+                        {% elif collection == 'vehicles' %}
+                        <th>車輛名稱</th>
+                        <th>類型</th>
+                        <th>最大載重</th>
+                        <th>最大體積</th>
+                        <th>可用性</th>
+                        <th>解鎖等級</th>
+                        {% elif collection == 'items' %}
+                        <th>物品名稱</th>
+                        <th>類別</th>
+                        <th>重量/單位</th>
+                        <th>體積/單位</th>
+                        <th>價值/單位</th>
+                        <th>特殊屬性</th>
+                        {% elif collection == 'tasks' %}
+                        <th>任務標題</th>
+                        <th>模式</th>
+                        <th>需要等級</th>
+                        <th>經驗獎勵</th>
+                        <th>貨幣獎勵</th>
+                        <th>狀態</th>
+                        {% elif collection == 'destinations' %}
+                        <th>目的地名稱</th>
+                        <th>區域</th>
+                        <th>座標</th>
+                        <th>可用服務</th>
+                        <th>解鎖狀態</th>
+                        {% elif collection == 'game-events' %}
+                        <th>事件名稱</th>
+                        <th>描述</th>
+                        <th>選擇數量</th>
+                        <th>狀態</th>
+                        {% elif collection == 'shop-items' %}
+                        <th>商品名稱</th>
+                        <th>價格</th>
+                        <th>類別</th>
+                        <th>等級需求</th>
+                        <th>狀態</th>
+                        {% else %}
+                        <th>ID</th>
+                        <th>名稱</th>
+                        <th>類型</th>
+                        <th>狀態</th>
+                        {% endif %}
+                        <th width="150">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="dataTableBody">
+                    {% for item in items %}
+                    <tr>
+                        {% if collection == 'users' %}
+                        <td><code>{{ item.user_id[:8] if item.user_id else item._id[:8] }}</code></td>
+                        <td>{{ item.username or '未設定' }}</td>
+                        <td>{{ item.email or '未設定' }}</td>
+                        <td><span class="badge bg-primary">{{ item.level or 1 }}</span></td>
+                        <td>{{ item.created_at.strftime('%Y-%m-%d') if item.created_at else '未知' }}</td>
+                        
+                        {% elif collection == 'vehicles' %}
+                        <td><strong>{{ item.name }}</strong></td>
+                        <td><span class="badge bg-info">{{ item.type }}</span></td>
+                        <td>{{ item.max_load_weight }}kg</td>
+                        <td>{{ item.max_load_volume }}m³</td>
+                        <td><span class="badge bg-success">{{ item.availability_type }}</span></td>
+                        <td><span class="badge bg-warning">Lv.{{ item.required_level_to_unlock }}</span></td>
+                        
+                        {% elif collection == 'items' %}
+                        <td><strong>{{ item.name }}</strong></td>
+                        <td><span class="badge bg-secondary">{{ item.category }}</span></td>
+                        <td>{{ item.weight_per_unit }}kg</td>
+                        <td>{{ item.volume_per_unit }}m³</td>
+                        <td>${{ item.base_value_per_unit }}</td>
+                        <td>
+                            {% if item.is_fragile %}<span class="badge bg-warning">易碎</span>{% endif %}
+                            {% if item.is_perishable %}<span class="badge bg-danger">易腐</span>{% endif %}
+                        </td>
+                        
+                        {% elif collection == 'tasks' %}
+                        <td><strong>{{ item.title }}</strong></td>
+                        <td><span class="badge bg-primary">{{ item.mode }}</span></td>
+                        <td>Lv.{{ item.requirements.required_player_level if item.requirements else 1 }}</td>
+                        <td>{{ item.rewards.experience_points if item.rewards else 0 }}XP</td>
+                        <td>${{ item.rewards.currency if item.rewards else 0 }}</td>
+                        <td>
+                            {% if item.is_active %}
+                            <span class="badge bg-success">啟用</span>
+                            {% else %}
+                            <span class="badge bg-secondary">停用</span>
+                            {% endif %}
+                        </td>
+                        
+                        {% elif collection == 'destinations' %}
+                        <td><strong>{{ item.name }}</strong></td>
+                        <td><span class="badge bg-info">{{ item.region }}</span></td>
+                        <td>
+                            {% if item.coordinates %}
+                            <small>{{ "%.4f"|format(item.coordinates.coordinates[1]) }}, {{ "%.4f"|format(item.coordinates.coordinates[0]) }}</small>
+                            {% else %}
+                            未設定
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if item.available_services %}
+                            {% for service in item.available_services[:2] %}
+                            <span class="badge bg-secondary">{{ service }}</span>
+                            {% endfor %}
+                            {% if item.available_services|length > 2 %}
+                            <span class="badge bg-light text-dark">+{{ item.available_services|length - 2 }}</span>
+                            {% endif %}
+                            {% else %}
+                            <span class="text-muted">無</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if item.is_unlocked_by_default %}
+                            <span class="badge bg-success">預設解鎖</span>
+                            {% else %}
+                            <span class="badge bg-warning">需解鎖</span>
+                            {% endif %}
+                        </td>
+                        
+                        {% elif collection == 'game-events' %}
+                        <td><strong>{{ item.name }}</strong></td>
+                        <td>
+                            <span class="text-muted">{{ item.description[:50] }}{% if item.description|length > 50 %}...{% endif %}</span>
+                        </td>
+                        <td>
+                            {% if item.choices %}
+                            <span class="badge bg-primary">{{ item.choices|length }} 個選項</span>
+                            {% else %}
+                            <span class="badge bg-secondary">無選項</span>
+                            {% endif %}
+                        </td>
+                        <td><span class="badge bg-success">正常</span></td>
+                        
+                        {% elif collection == 'shop-items' %}
+                        <td><strong>{{ item.name }}</strong></td>
+                        <td>
+                            {% if item.discount_price %}
+                            <span class="text-decoration-line-through text-muted">${{ item.price }}</span>
+                            <span class="text-danger fw-bold">${{ item.discount_price }}</span>
+                            {% else %}
+                            <span class="fw-bold">${{ item.price }}</span>
+                            {% endif %}
+                        </td>
+                        <td><span class="badge bg-secondary">{{ item.category }}</span></td>
+                        <td><span class="badge bg-warning">Lv.{{ item.required_level or 1 }}</span></td>
+                        <td>
+                            {% if item.is_available %}
+                            <span class="badge bg-success">上架中</span>
+                            {% else %}
+                            <span class="badge bg-secondary">下架</span>
+                            {% endif %}
+                            {% if item.is_featured %}
+                            <span class="badge bg-star">精選</span>
+                            {% endif %}
+                        </td>
+                        
+                        {% else %}
+                        <td><code>{{ item._id[:8] }}</code></td>
+                        <td>{{ item.name or '未命名' }}</td>
+                        <td>{{ item.type or '未分類' }}</td>
+                        <td><span class="badge bg-success">正常</span></td>
+                        {% endif %}
+                        
+                        <td>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button type="button" class="btn btn-outline-primary" onclick="viewItem('{{ item._id }}')">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                <button type="button" class="btn btn-outline-warning" onclick="editItem('{{ item._id }}')">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% if collection != 'users' %}
+                                <button type="button" class="btn btn-outline-danger" data-item-id="{{ item._id }}" data-item-name="{{ item.name or item.title or '此項目' }}" onclick="confirmDelete(this)">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">暫無資料</h5>
+            <p class="text-muted">{{ title }}列表目前是空的</p>
+            {% if collection != 'users' %}
+            <a href="/admin/{{ collection }}/add" class="btn btn-primary">
+                <i class="fas fa-plus"></i> 立即新增
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    // 搜尋功能
+    $('#searchInput').on('input', function() {
+        const searchTerm = $(this).val().toLowerCase();
+        filterTable(searchTerm, $('#filterSelect').val());
+    });
+    
+    // 篩選功能
+    $('#filterSelect').on('change', function() {
+        const filterValue = $(this).val();
+        filterTable($('#searchInput').val().toLowerCase(), filterValue);
+    });
+    
+    function filterTable(searchTerm, filterValue) {
+        $('#dataTableBody tr').each(function() {
+            const row = $(this);
+            const text = row.text().toLowerCase();
+            const showBySearch = !searchTerm || text.includes(searchTerm);
+            const showByFilter = !filterValue || text.includes(filterValue.toLowerCase());
+            
+            if (showBySearch && showByFilter) {
+                row.show();
+            } else {
+                row.hide();
+            }
+        });
+    }
+});
+
+function viewItem(id) {
+    // 根據collection類型跳轉到對應的查看頁面
+    const collection = '{{ collection }}';
+    switch(collection) {
+        case 'vehicles':
+            window.open(`/admin/vehicles/${id}`, '_blank');
+            break;
+        case 'items':
+            window.open(`/admin/items/${id}`, '_blank');
+            break;
+        case 'tasks':
+            window.open(`/admin/tasks/${id}`, '_blank');
+            break;
+        case 'destinations':
+            window.open(`/admin/destinations/${id}`, '_blank');
+            break;
+        case 'game-events':
+            window.open(`/admin/game-events/${id}`, '_blank');
+            break;
+        case 'shop-items':
+            window.open(`/admin/shop-items/${id}`, '_blank');
+            break;
+        default:
+            alert('查看功能暫未實現: ' + id);
+    }
+}
+
+function editItem(id) {
+    // 根據collection類型跳轉到對應的編輯頁面
+    const collection = '{{ collection }}';
+    switch(collection) {
+        case 'vehicles':
+            window.location.href = `/admin/vehicles/${id}/edit`;
+            break;
+        case 'items':
+            window.location.href = `/admin/items/${id}/edit`;
+            break;
+        case 'tasks':
+            window.location.href = `/admin/tasks/${id}/edit`;
+            break;
+        case 'destinations':
+            window.location.href = `/admin/destinations/${id}/edit`;
+            break;
+        case 'game-events':
+            window.location.href = `/admin/game-events/${id}/edit`;
+            break;
+        case 'shop-items':
+            window.location.href = `/admin/shop-items/${id}/edit`;
+            break;
+        default:
+            alert('編輯功能暫未實現: ' + id);
+    }
+}
+
+        function confirmDelete(button) {
+            const itemId = button.getAttribute('data-item-id');
+            const itemName = button.getAttribute('data-item-name');
+            
+            if (confirm(`確定要刪除「${itemName}」嗎？此操作無法撤銷！`)) {
+                deleteItem(itemId);
+            }
+        }
+
+        function deleteItem(id) {
+            // 執行刪除操作的AJAX請求
+            fetch(`/admin/{{ collection }}/${id}/delete`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => {
+                if (response.ok) {
+                    location.reload();
+                } else {
+                    alert('刪除失敗！');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('刪除時發生錯誤！');
+            });
+        }
+
+function refreshData() {
+    location.reload();
+}
+</script>
+{% endblock %}

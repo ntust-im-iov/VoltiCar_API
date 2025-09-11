@@ -1,0 +1,386 @@
+{% extends "base.html" %}
+
+{% block title %}新增任務定義 - Volticar 管理面板{% endblock %}
+
+{% block content %}
+<!-- 頁面標題 -->
+<div class="page-header fade-in">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/admin/" class="text-white">儀表板</a></li>
+            <li class="breadcrumb-item"><a href="/admin/tasks" class="text-white">任務定義</a></li>
+            <li class="breadcrumb-item active text-white">新增任務定義</li>
+        </ol>
+    </nav>
+    <h1><i class="fas fa-tasks"></i> 新增任務定義</h1>
+    <p class="mb-0">建立遊戲中的運輸任務和挑戰</p>
+</div>
+
+<!-- 錯誤訊息 -->
+{% if error %}
+<div class="alert alert-danger fade-in" role="alert">
+    <i class="fas fa-exclamation-triangle"></i> {{ error }}
+</div>
+{% endif %}
+
+<!-- 表單 -->
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <div class="card fade-in">
+            <div class="card-header">
+                <h5><i class="fas fa-plus-circle"></i> 任務定義資訊</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" id="taskForm" novalidate>
+                    <div class="row g-3">
+                        <!-- 基本資訊 -->
+                        <div class="col-12">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-info-circle"></i> 基本資訊</h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="title" class="form-label">任務標題 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="title" name="title" required
+                                   placeholder="例: 緊急醫療物資運送">
+                            <div class="invalid-feedback">請輸入任務標題</div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="mode" class="form-label">任務模式 <span class="text-danger">*</span></label>
+                            <select class="form-select select2" id="mode" name="mode" required>
+                                <option value="">選擇任務模式</option>
+                                <option value="運輸">運輸模式</option>
+                                <option value="配送">配送模式</option>
+                                <option value="接單">接單模式</option>
+                                <option value="限時">限時挑戰</option>
+                                <option value="特殊">特殊任務</option>
+                            </select>
+                            <div class="invalid-feedback">請選擇任務模式</div>
+                        </div>
+                        
+                        <div class="col-12">
+                            <label for="description" class="form-label">任務描述 <span class="text-danger">*</span></label>
+                            <textarea class="form-control" id="description" name="description" rows="4" required
+                                      placeholder="詳細描述任務的背景、目標和注意事項"></textarea>
+                            <div class="invalid-feedback">請輸入任務描述</div>
+                        </div>
+                        
+                        <!-- 任務需求 -->
+                        <div class="col-12 mt-4">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-clipboard-check"></i> 任務需求</h6>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label for="required_player_level" class="form-label">需要玩家等級</label>
+                            <input type="number" class="form-control" id="required_player_level" 
+                                   name="required_player_level" value="1" min="1" max="100">
+                            <small class="text-muted">玩家需要達到的等級</small>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label for="required_vehicle_type" class="form-label">需要車輛類型</label>
+                            <select class="form-select select2" id="required_vehicle_type" name="required_vehicle_type">
+                                <option value="">無特殊要求</option>
+                                <option value="轎車">轎車</option>
+                                <option value="休旅車">休旅車</option>
+                                <option value="貨車">貨車</option>
+                                <option value="卡車">卡車</option>
+                                <option value="機車">機車</option>
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label for="time_limit_seconds" class="form-label">時間限制 (分鐘)</label>
+                            <input type="number" class="form-control" id="time_limit_minutes" 
+                                   name="time_limit_minutes" min="1" placeholder="60">
+                            <small class="text-muted">完成任務的時間限制</small>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="pickup_location_id" class="form-label">取貨地點</label>
+                            <select class="form-select select2" id="pickup_location_id" name="pickup_location_id">
+                                <option value="">選擇取貨地點</option>
+                                <!-- 這裡會動態載入目的地選項 -->
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="destination_id" class="form-label">送達地點</label>
+                            <select class="form-select select2" id="destination_id" name="destination_id">
+                                <option value="">選擇送達地點</option>
+                                <!-- 這裡會動態載入目的地選項 -->
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="min_cargo_value" class="form-label">最低貨物價值</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="min_cargo_value" 
+                                       name="min_cargo_value" min="0" placeholder="1000">
+                            </div>
+                            <small class="text-muted">運送貨物的最低總價值</small>
+                        </div>
+                        
+                        <!-- 運送物品 -->
+                        <div class="col-12 mt-4">
+                            <h6 class="text-muted border-bottom pb-2">
+                                <i class="fas fa-boxes"></i> 運送物品 
+                                <button type="button" class="btn btn-sm btn-outline-primary ms-2" id="add-deliver-item">
+                                    <i class="fas fa-plus"></i> 新增物品
+                                </button>
+                            </h6>
+                        </div>
+                        
+                        <div class="col-12">
+                            <div id="deliver-items-container">
+                                <!-- 動態新增的運送物品會顯示在這裡 -->
+                            </div>
+                        </div>
+                        
+                        <!-- 任務獎勵 -->
+                        <div class="col-12 mt-4">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-trophy"></i> 任務獎勵</h6>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label for="experience_points" class="form-label">經驗值 <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="experience_points" 
+                                   name="experience_points" min="1" required placeholder="100">
+                            <div class="invalid-feedback">請輸入經驗值獎勵</div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label for="currency" class="form-label">貨幣獎勵</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="currency" 
+                                       name="currency" min="0" value="0" placeholder="500">
+                            </div>
+                        </div>
+                        
+                        <!-- 獎勵物品 -->
+                        <div class="col-12 mt-3">
+                            <h6 class="text-muted">
+                                獎勵物品 
+                                <button type="button" class="btn btn-sm btn-outline-success ms-2" id="add-reward-item">
+                                    <i class="fas fa-plus"></i> 新增獎勵物品
+                                </button>
+                            </h6>
+                            <div id="reward-items-container">
+                                <!-- 動態新增的獎勵物品會顯示在這裡 -->
+                            </div>
+                        </div>
+                        
+                        <!-- 任務設定 -->
+                        <div class="col-12 mt-4">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-cog"></i> 任務設定</h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="is_repeatable" name="is_repeatable">
+                                <label class="form-check-label" for="is_repeatable">
+                                    <i class="fas fa-redo"></i> 可重複任務
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6" id="cooldown-container" style="display: none;">
+                            <label for="repeat_cooldown_hours" class="form-label">重複冷卻時間 (小時)</label>
+                            <input type="number" class="form-control" id="repeat_cooldown_hours" 
+                                   name="repeat_cooldown_hours" min="1" placeholder="24">
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="is_active" name="is_active" checked>
+                                <label class="form-check-label" for="is_active">
+                                    <i class="fas fa-play"></i> 立即啟用任務
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- 按鈕區域 -->
+                        <div class="col-12 mt-4 pt-3 border-top">
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-warning">
+                                    <i class="fas fa-save"></i> 儲存任務定義
+                                </button>
+                                <a href="/admin/tasks" class="btn btn-secondary">
+                                    <i class="fas fa-arrow-left"></i> 返回列表
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let deliverItemCounter = 0;
+let rewardItemCounter = 0;
+
+$(document).ready(function() {
+    // 載入目的地和物品選項
+    loadDestinations();
+    loadItems();
+    
+    // 可重複任務控制
+    $('#is_repeatable').on('change', function() {
+        if ($(this).is(':checked')) {
+            $('#cooldown-container').show();
+            $('#repeat_cooldown_hours').attr('required', true);
+        } else {
+            $('#cooldown-container').hide();
+            $('#repeat_cooldown_hours').attr('required', false);
+        }
+    });
+    
+    // 新增運送物品
+    $('#add-deliver-item').on('click', function() {
+        addDeliverItem();
+    });
+    
+    // 新增獎勵物品
+    $('#add-reward-item').on('click', function() {
+        addRewardItem();
+    });
+    
+    // 表單提交處理
+    $('#taskForm').on('submit', function(e) {
+        // 轉換時間限制從分鐘到秒
+        const minutes = $('#time_limit_minutes').val();
+        if (minutes) {
+            $('<input>').attr({
+                type: 'hidden',
+                name: 'time_limit_seconds',
+                value: minutes * 60
+            }).appendTo('#taskForm');
+        }
+        
+        // 收集運送物品數據
+        const deliverItems = [];
+        $('.deliver-item-row').each(function() {
+            const itemId = $(this).find('.deliver-item-select').val();
+            const quantity = $(this).find('.deliver-quantity').val();
+            if (itemId && quantity) {
+                deliverItems.push({item_id: itemId, quantity: parseInt(quantity)});
+            }
+        });
+        
+        if (deliverItems.length > 0) {
+            $('<input>').attr({
+                type: 'hidden',
+                name: 'deliver_items',
+                value: JSON.stringify(deliverItems)
+            }).appendTo('#taskForm');
+        }
+        
+        // 收集獎勵物品數據
+        const rewardItems = [];
+        $('.reward-item-row').each(function() {
+            const itemId = $(this).find('.reward-item-select').val();
+            const quantity = $(this).find('.reward-quantity').val();
+            if (itemId && quantity) {
+                rewardItems.push({item_id: itemId, quantity: parseInt(quantity)});
+            }
+        });
+        
+        if (rewardItems.length > 0) {
+            $('<input>').attr({
+                type: 'hidden',
+                name: 'reward_items',
+                value: JSON.stringify(rewardItems)
+            }).appendTo('#taskForm');
+        }
+    });
+});
+
+function loadDestinations() {
+    // 這裡應該通過 AJAX 載入目的地，暫時使用靜態數據
+    const destinations = [
+        {id: 'dest1', name: '台北市中心'},
+        {id: 'dest2', name: '桃園機場'},
+        {id: 'dest3', name: '新竹科學園區'},
+        {id: 'dest4', name: '台中港'},
+        {id: 'dest5', name: '高雄港'}
+    ];
+    
+    destinations.forEach(dest => {
+        $('#pickup_location_id, #destination_id').append(
+            `<option value="${dest.id}">${dest.name}</option>`
+        );
+    });
+}
+
+function loadItems() {
+    // 這裡應該通過 AJAX 載入物品，暫時使用靜態數據
+    window.availableItems = [
+        {id: 'item1', name: '咖啡豆'},
+        {id: 'item2', name: '電子產品'},
+        {id: 'item3', name: '醫療用品'},
+        {id: 'item4', name: '新鮮蔬果'},
+        {id: 'item5', name: '建材'}
+    ];
+}
+
+function addDeliverItem() {
+    deliverItemCounter++;
+    const html = `
+        <div class="row g-2 mb-2 deliver-item-row" id="deliver-item-${deliverItemCounter}">
+            <div class="col-md-6">
+                <select class="form-select deliver-item-select" name="deliver_item_${deliverItemCounter}_id">
+                    <option value="">選擇物品</option>
+                    ${window.availableItems.map(item => `<option value="${item.id}">${item.name}</option>`).join('')}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <input type="number" class="form-control deliver-quantity" placeholder="數量" min="1">
+            </div>
+            <div class="col-md-2">
+                <button type="button" class="btn btn-outline-danger w-100" onclick="removeDeliverItem(${deliverItemCounter})">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+    `;
+    $('#deliver-items-container').append(html);
+}
+
+function removeDeliverItem(id) {
+    $(`#deliver-item-${id}`).remove();
+}
+
+function addRewardItem() {
+    rewardItemCounter++;
+    const html = `
+        <div class="row g-2 mb-2 reward-item-row" id="reward-item-${rewardItemCounter}">
+            <div class="col-md-6">
+                <select class="form-select reward-item-select" name="reward_item_${rewardItemCounter}_id">
+                    <option value="">選擇獎勵物品</option>
+                    ${window.availableItems.map(item => `<option value="${item.id}">${item.name}</option>`).join('')}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <input type="number" class="form-control reward-quantity" placeholder="數量" min="1">
+            </div>
+            <div class="col-md-2">
+                <button type="button" class="btn btn-outline-danger w-100" onclick="removeRewardItem(${rewardItemCounter})">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+    `;
+    $('#reward-items-container').append(html);
+}
+
+function removeRewardItem(id) {
+    $(`#reward-item-${id}`).remove();
+}
+</script>
+{% endblock %}

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Dict, Any, Optional
 
 # 地址模型 (重命名為 LocationAddress)
@@ -45,9 +45,7 @@ class ChargeStation(BaseModel):
     Reference: Reference
     Telephone: str
 
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = ConfigDict(from_attributes=True)
 
 # 充電站創建請求模型
 class ChargeStationCreate(BaseModel):
@@ -75,6 +73,4 @@ class StationSummary(BaseModel):
     PositionLon: float
     Address: Optional[LocationAddress] = Field(default=None) # 使用 LocationAddress 並採納 Field(default=None)
 
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = ConfigDict(from_attributes=True)

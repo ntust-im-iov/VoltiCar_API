@@ -1,0 +1,331 @@
+{% extends "base.html" %}
+
+{% block title %}新增商店物品 - Volticar 管理面板{% endblock %}
+
+{% block content %}
+<!-- 頁面標題 -->
+<div class="page-header fade-in">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/admin/" class="text-white">儀表板</a></li>
+            <li class="breadcrumb-item"><a href="/admin/shop_items" class="text-white">商店物品</a></li>
+            <li class="breadcrumb-item active text-white">新增商店物品</li>
+        </ol>
+    </nav>
+    <h1><i class="fas fa-shopping-cart"></i> 新增商店物品</h1>
+    <p class="mb-0">設定玩家可以購買的商店物品</p>
+</div>
+
+<!-- 錯誤訊息 -->
+{% if error %}
+<div class="alert alert-danger fade-in" role="alert">
+    <i class="fas fa-exclamation-triangle"></i> {{ error }}
+</div>
+{% endif %}
+
+<!-- 表單 -->
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card fade-in">
+            <div class="card-header">
+                <h5><i class="fas fa-plus-circle"></i> 商店物品資訊</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" id="shopItemForm" novalidate>
+                    <div class="row g-3">
+                        <!-- 基本資訊 -->
+                        <div class="col-12">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-info-circle"></i> 基本資訊</h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="name" class="form-label">物品名稱 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="name" name="name" 
+                                   value="{{ form_data.name if form_data else '' }}" required
+                                   placeholder="例: 車輛升級套件">
+                            <div class="invalid-feedback">請輸入物品名稱</div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="category" class="form-label">物品類別 <span class="text-danger">*</span></label>
+                            <select class="form-select select2" id="category" name="category" required>
+                                <option value="">選擇物品類別</option>
+                                <option value="車輛升級" {{ 'selected' if form_data and form_data.category == '車輛升級' }}>車輛升級</option>
+                                <option value="燃料" {{ 'selected' if form_data and form_data.category == '燃料' }}>燃料/電力</option>
+                                <option value="維修" {{ 'selected' if form_data and form_data.category == '維修' }}>維修工具</option>
+                                <option value="裝飾" {{ 'selected' if form_data and form_data.category == '裝飾' }}>車輛裝飾</option>
+                                <option value="經驗加成" {{ 'selected' if form_data and form_data.category == '經驗加成' }}>經驗加成道具</option>
+                                <option value="貨幣包" {{ 'selected' if form_data and form_data.category == '貨幣包' }}>貨幣包</option>
+                                <option value="許可證" {{ 'selected' if form_data and form_data.category == '許可證' }}>運輸許可證</option>
+                                <option value="保險" {{ 'selected' if form_data and form_data.category == '保險' }}>保險服務</option>
+                                <option value="其他" {{ 'selected' if form_data and form_data.category == '其他' }}>其他</option>
+                            </select>
+                            <div class="invalid-feedback">請選擇物品類別</div>
+                        </div>
+                        
+                        <div class="col-12">
+                            <label for="description" class="form-label">物品描述 <span class="text-danger">*</span></label>
+                            <textarea class="form-control" id="description" name="description" rows="3" required
+                                      placeholder="描述這個物品的功能、效果或用途">{{ form_data.description if form_data else '' }}</textarea>
+                            <div class="invalid-feedback">請輸入物品描述</div>
+                        </div>
+                        
+                        <!-- 價格設定 -->
+                        <div class="col-12 mt-4">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-dollar-sign"></i> 價格設定</h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="price" class="form-label">售價 <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="price" name="price" 
+                                       value="{{ form_data.price if form_data else '' }}" 
+                                       min="1" required placeholder="1000">
+                            </div>
+                            <div class="invalid-feedback">請輸入售價</div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="discount_price" class="form-label">折扣價格</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="discount_price" name="discount_price" 
+                                       value="{{ form_data.discount_price if form_data else '' }}" 
+                                       min="1" placeholder="800">
+                            </div>
+                            <small class="text-muted">設定後將顯示為促銷價格</small>
+                        </div>
+                        
+                        <!-- 物品效果 -->
+                        <div class="col-12 mt-4">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-magic"></i> 物品效果</h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="effect_type" class="form-label">效果類型</label>
+                            <select class="form-select select2" id="effect_type" name="effect_type">
+                                <option value="">無特殊效果</option>
+                                <option value="經驗加成">經驗加成</option>
+                                <option value="貨幣加成">貨幣加成</option>
+                                <option value="載重增加">載重增加</option>
+                                <option value="速度增加">速度增加</option>
+                                <option value="燃料效率">燃料效率提升</option>
+                                <option value="維修">車輛維修</option>
+                                <option value="充電">電池充電</option>
+                                <option value="解鎖">解鎖功能</option>
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6" id="effect-value-container" style="display: none;">
+                            <label for="effect_value" class="form-label">效果數值</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="effect_value" name="effect_value" 
+                                       min="1" placeholder="10">
+                                <span class="input-group-text" id="effect-unit">%</span>
+                            </div>
+                            <small class="text-muted" id="effect-description">效果的強度或持續時間</small>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="duration_hours" class="form-label">效果持續時間 (小時)</label>
+                            <input type="number" class="form-control" id="duration_hours" name="duration_hours" 
+                                   min="1" placeholder="24">
+                            <small class="text-muted">效果持續的時間，永久效果請留空</small>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="stack_limit" class="form-label">堆疊上限</label>
+                            <input type="number" class="form-control" id="stack_limit" name="stack_limit" 
+                                   min="1" value="1" placeholder="1">
+                            <small class="text-muted">玩家可同時擁有的數量上限</small>
+                        </div>
+                        
+                        <!-- 購買限制 -->
+                        <div class="col-12 mt-4">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-lock"></i> 購買限制</h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="required_level" class="form-label">需要等級</label>
+                            <input type="number" class="form-control" id="required_level" name="required_level" 
+                                   min="1" value="1" placeholder="1">
+                            <small class="text-muted">玩家需要達到的等級才能購買</small>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="daily_limit" class="form-label">每日購買限制</label>
+                            <input type="number" class="form-control" id="daily_limit" name="daily_limit" 
+                                   min="1" placeholder="5">
+                            <small class="text-muted">玩家每天可購買的次數，無限制請留空</small>
+                        </div>
+                        
+                        <!-- 顯示設定 -->
+                        <div class="col-12 mt-4">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-eye"></i> 顯示設定</h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="is_featured" name="is_featured">
+                                <label class="form-check-label" for="is_featured">
+                                    <i class="fas fa-star"></i> 推薦商品
+                                </label>
+                                <div class="form-text">在商店中重點推薦此商品</div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="is_available" name="is_available" checked>
+                                <label class="form-check-label" for="is_available">
+                                    <i class="fas fa-shopping-bag"></i> 立即上架
+                                </label>
+                                <div class="form-text">勾選後玩家可以立即購買</div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-12">
+                            <label for="icon_url" class="form-label">物品圖示 URL</label>
+                            <input type="url" class="form-control" id="icon_url" name="icon_url" 
+                                   value="{{ form_data.icon_url if form_data else '' }}" 
+                                   placeholder="https://example.com/shop-item-icon.png">
+                            <small class="text-muted">商店中顯示的物品圖示</small>
+                        </div>
+                        
+                        <!-- 按鈕區域 -->
+                        <div class="col-12 mt-4 pt-3 border-top">
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-success">
+                                    <i class="fas fa-save"></i> 儲存商店物品
+                                </button>
+                                <a href="/admin/shop_items" class="btn btn-secondary">
+                                    <i class="fas fa-arrow-left"></i> 返回列表
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    // 效果類型變更處理
+    $('#effect_type').on('change', function() {
+        const effectType = $(this).val();
+        
+        if (effectType) {
+            $('#effect-value-container').show();
+            
+            // 根據效果類型設定單位和描述
+            let unit = '%';
+            let description = '效果的強度或持續時間';
+            
+            switch(effectType) {
+                case '經驗加成':
+                case '貨幣加成':
+                case '燃料效率':
+                    unit = '%';
+                    description = '增加的百分比';
+                    break;
+                case '載重增加':
+                    unit = 'kg';
+                    description = '增加的載重量 (公斤)';
+                    break;
+                case '速度增加':
+                    unit = 'km/h';
+                    description = '增加的速度 (公里/小時)';
+                    break;
+                case '維修':
+                case '充電':
+                    unit = '%';
+                    description = '恢復的百分比';
+                    break;
+                case '解鎖':
+                    unit = '';
+                    description = '解鎖的功能ID或級別';
+                    break;
+            }
+            
+            $('#effect-unit').text(unit);
+            $('#effect-description').text(description);
+        } else {
+            $('#effect-value-container').hide();
+        }
+    });
+    
+    // 折扣價格驗證
+    $('#discount_price').on('input', function() {
+        const originalPrice = parseFloat($('#price').val());
+        const discountPrice = parseFloat($(this).val());
+        
+        if (discountPrice && originalPrice && discountPrice >= originalPrice) {
+            $(this).addClass('is-invalid');
+            $(this).siblings('.invalid-feedback').remove();
+            $(this).after('<div class="invalid-feedback">折扣價格必須低於原價</div>');
+        } else {
+            $(this).removeClass('is-invalid');
+            $(this).siblings('.invalid-feedback').remove();
+        }
+    });
+    
+    // 圖片預覽
+    $('#icon_url').on('input', function() {
+        const url = $(this).val();
+        if (url && isValidUrl(url)) {
+            $('#icon-preview').remove();
+            const previewHtml = `
+                <div id="icon-preview" class="mt-2">
+                    <img src="${url}" class="img-thumbnail" style="max-width: 60px; max-height: 60px;" 
+                         onerror="this.style.display='none'">
+                </div>
+            `;
+            $(this).parent().append(previewHtml);
+        }
+    });
+    
+    function isValidUrl(string) {
+        try {
+            new URL(string);
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }
+    
+    // 表單提交驗證
+    $('#shopItemForm').on('submit', function(e) {
+        const price = parseFloat($('#price').val());
+        const discountPrice = parseFloat($('#discount_price').val());
+        
+        if (discountPrice && discountPrice >= price) {
+            e.preventDefault();
+            $('#discount_price').addClass('is-invalid');
+            alert('折扣價格必須低於原價');
+            return false;
+        }
+        
+        // 準備效果數據
+        const effectType = $('#effect_type').val();
+        const effectValue = $('#effect_value').val();
+        
+        if (effectType && effectValue) {
+            $('<input>').attr({
+                type: 'hidden',
+                name: 'effect_data',
+                value: JSON.stringify({
+                    type: effectType,
+                    value: parseFloat(effectValue),
+                    duration_hours: $('#duration_hours').val() ? parseInt($('#duration_hours').val()) : null
+                })
+            }).appendTo('#shopItemForm');
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,342 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - Volticar 管理面板{% endblock %}
+
+{% block content %}
+<!-- 頁面標題 -->
+<div class="page-header fade-in">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/admin/" class="text-white">儀表板</a></li>
+            <li class="breadcrumb-item"><a href="/admin/items" class="text-white">物品定義</a></li>
+            <li class="breadcrumb-item active text-white">{{ title }}</li>
+        </ol>
+    </nav>
+    <h1><i class="fas fa-box"></i> {{ title }}</h1>
+    <p class="mb-0">定義遊戲中的物品屬性和特性</p>
+</div>
+
+<!-- 錯誤訊息 -->
+{% if error %}
+<div class="alert alert-danger fade-in" role="alert">
+    <i class="fas fa-exclamation-triangle"></i> {{ error }}
+</div>
+{% endif %}
+
+<!-- 表單 -->
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card fade-in">
+            <div class="card-header">
+                <h5><i class="fas fa-plus-circle"></i> 物品定義資訊</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" id="itemForm" novalidate 
+                      action="{% if edit_mode %}/admin/items/{{ item_id }}/edit{% else %}/admin/items/add{% endif %}">
+                    <div class="row g-3">
+                        <!-- 基本資訊 -->
+                        <div class="col-12">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-info-circle"></i> 基本資訊</h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="name" class="form-label">物品名稱 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="name" name="name" 
+                                   value="{{ form_data.name if form_data else '' }}" required
+                                   placeholder="例: 咖啡豆">
+                            <div class="invalid-feedback">請輸入物品名稱</div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="category" class="form-label">物品類別 <span class="text-danger">*</span></label>
+                            <select class="form-select select2" id="category" name="category" required>
+                                <option value="">選擇物品類別</option>
+                                <option value="食品" {{ 'selected' if form_data and form_data.category == '食品' }}>食品</option>
+                                <option value="飲料" {{ 'selected' if form_data and form_data.category == '飲料' }}>飲料</option>
+                                <option value="電子產品" {{ 'selected' if form_data and form_data.category == '電子產品' }}>電子產品</option>
+                                <option value="家具" {{ 'selected' if form_data and form_data.category == '家具' }}>家具</option>
+                                <option value="服裝" {{ 'selected' if form_data and form_data.category == '服裝' }}>服裝</option>
+                                <option value="書籍" {{ 'selected' if form_data and form_data.category == '書籍' }}>書籍</option>
+                                <option value="藥品" {{ 'selected' if form_data and form_data.category == '藥品' }}>藥品</option>
+                                <option value="化學品" {{ 'selected' if form_data and form_data.category == '化學品' }}>化學品</option>
+                                <option value="建材" {{ 'selected' if form_data and form_data.category == '建材' }}>建材</option>
+                                <option value="原料" {{ 'selected' if form_data and form_data.category == '原料' }}>原料</option>
+                                <option value="工具" {{ 'selected' if form_data and form_data.category == '工具' }}>工具</option>
+                                <option value="其他" {{ 'selected' if form_data and form_data.category == '其他' }}>其他</option>
+                            </select>
+                            <div class="invalid-feedback">請選擇物品類別</div>
+                        </div>
+                        
+                        <div class="col-12">
+                            <label for="description" class="form-label">物品描述</label>
+                            <textarea class="form-control" id="description" name="description" rows="3"
+                                      placeholder="描述這個物品的特點、用途或來源">{{ form_data.description if form_data else '' }}</textarea>
+                        </div>
+                        
+                        <!-- 物理屬性 -->
+                        <div class="col-12 mt-4">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-weight"></i> 物理屬性</h6>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label for="weight_per_unit" class="form-label">單位重量 (kg) <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="weight_per_unit" name="weight_per_unit" 
+                                       value="{{ form_data.weight_per_unit if form_data else '' }}" 
+                                       step="0.001" min="0" required placeholder="1.5">
+                                <span class="input-group-text">公斤</span>
+                            </div>
+                            <div class="invalid-feedback">請輸入單位重量</div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label for="volume_per_unit" class="form-label">單位體積 (m³) <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="volume_per_unit" name="volume_per_unit" 
+                                       value="{{ form_data.volume_per_unit if form_data else '' }}" 
+                                       step="0.001" min="0" required placeholder="0.01">
+                                <span class="input-group-text">立方米</span>
+                            </div>
+                            <div class="invalid-feedback">請輸入單位體積</div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label for="base_value_per_unit" class="form-label">單位價值 <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="base_value_per_unit" name="base_value_per_unit" 
+                                       value="{{ form_data.base_value_per_unit if form_data else '' }}" 
+                                       min="0" required placeholder="100">
+                            </div>
+                            <div class="invalid-feedback">請輸入單位價值</div>
+                        </div>
+                        
+                        <!-- 特殊屬性 -->
+                        <div class="col-12 mt-4">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-exclamation-triangle"></i> 特殊屬性</h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="is_fragile" name="is_fragile" 
+                                       {{ 'checked' if form_data and form_data.is_fragile }}>
+                                <label class="form-check-label" for="is_fragile">
+                                    <i class="fas fa-glass-martini"></i> 易碎物品
+                                </label>
+                                <div class="form-text">運輸時需要特別小心處理</div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="is_perishable" name="is_perishable" 
+                                       {{ 'checked' if form_data and form_data.is_perishable }}>
+                                <label class="form-check-label" for="is_perishable">
+                                    <i class="fas fa-clock"></i> 易腐物品
+                                </label>
+                                <div class="form-text">有保存期限的物品</div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6" id="spoil-duration-container" style="display: none;">
+                            <label for="spoil_duration_hours" class="form-label">腐壞時間 (小時)</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="spoil_duration_hours" name="spoil_duration_hours" 
+                                       value="{{ form_data.spoil_duration_hours if form_data else '' }}" 
+                                       min="1" placeholder="24">
+                                <span class="input-group-text">小時</span>
+                            </div>
+                            <small class="text-muted">物品開始腐壞的時間</small>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="required_permit_type" class="form-label">需要許可證類型</label>
+                            <select class="form-select select2" id="required_permit_type" name="required_permit_type">
+                                <option value="">無需許可證</option>
+                                <option value="危險品" {{ 'selected' if form_data and form_data.required_permit_type == '危險品' }}>危險品許可證</option>
+                                <option value="食品" {{ 'selected' if form_data and form_data.required_permit_type == '食品' }}>食品運輸許可證</option>
+                                <option value="醫療" {{ 'selected' if form_data and form_data.required_permit_type == '醫療' }}>醫療物品許可證</option>
+                                <option value="化學品" {{ 'selected' if form_data and form_data.required_permit_type == '化學品' }}>化學品許可證</option>
+                                <option value="貴重品" {{ 'selected' if form_data and form_data.required_permit_type == '貴重品' }}>貴重品許可證</option>
+                            </select>
+                            <small class="text-muted">運輸此物品需要的特殊許可證</small>
+                        </div>
+                        
+                        <!-- 圖片設定 -->
+                        <div class="col-12 mt-4">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-image"></i> 圖片設定</h6>
+                        </div>
+                        
+                        <div class="col-12">
+                            <label for="icon_url" class="form-label">物品圖示 URL</label>
+                            <input type="url" class="form-control" id="icon_url" name="icon_url" 
+                                   value="{{ form_data.icon_url if form_data else '' }}" 
+                                   placeholder="https://example.com/item-icon.png">
+                            <small class="text-muted">物品的圖示，用於遊戲中顯示</small>
+                        </div>
+                        
+                        <!-- 按鈕區域 -->
+                        <div class="col-12 mt-4 pt-3 border-top">
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-success">
+                                    <i class="fas fa-save"></i> {% if edit_mode %}更新物品定義{% else %}儲存物品定義{% endif %}
+                                </button>
+                                <a href="/admin/items" class="btn btn-secondary">
+                                    <i class="fas fa-arrow-left"></i> 返回列表
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function() {
+        // 易腐物品選項控制
+        $('#is_perishable').on('change', function() {
+            if ($(this).is(':checked')) {
+                $('#spoil-duration-container').show();
+                $('#spoil_duration_hours').attr('required', true);
+            } else {
+                $('#spoil-duration-container').hide();
+                $('#spoil_duration_hours').attr('required', false);
+            }
+        });
+        
+        // 初始化易腐物品顯示
+        if ($('#is_perishable').is(':checked')) {
+            $('#spoil-duration-container').show();
+        }
+        
+        // 圖片預覽
+        $('#icon_url').on('input', function() {
+            const url = $(this).val();
+            if (url && isValidUrl(url)) {
+                $('#icon-preview').remove();
+                const previewHtml = `
+                    <div id="icon-preview" class="mt-2">
+                        <img src="${url}" class="img-thumbnail" style="max-width: 60px; max-height: 60px;" 
+                             onerror="this.style.display='none'">
+                    </div>
+                `;
+                $(this).parent().append(previewHtml);
+            }
+        });
+        
+        function isValidUrl(string) {
+            try {
+                new URL(string);
+                return true;
+            } catch (_) {
+                return false;
+            }
+        }
+        
+        // 表單驗證
+        $('#itemForm').on('submit', function(e) {
+            const weight = parseFloat($('#weight_per_unit').val());
+            const volume = parseFloat($('#volume_per_unit').val());
+            const value = parseInt($('#base_value_per_unit').val());
+            
+            if (weight <= 0) {
+                e.preventDefault();
+                $('#weight_per_unit').addClass('is-invalid');
+                alert('單位重量必須大於 0');
+                return false;
+            }
+            
+            if (volume <= 0) {
+                e.preventDefault();
+                $('#volume_per_unit').addClass('is-invalid');
+                alert('單位體積必須大於 0');
+                return false;
+            }
+            
+            if (value <= 0) {
+                e.preventDefault();
+                $('#base_value_per_unit').addClass('is-invalid');
+                alert('單位價值必須大於 0');
+                return false;
+            }
+            
+            if ($('#is_perishable').is(':checked') && !$('#spoil_duration_hours').val()) {
+                e.preventDefault();
+                $('#spoil_duration_hours').addClass('is-invalid');
+                alert('易腐物品必須設定腐壞時間');
+                return false;
+            }
+        });
+    });
+</script>
+{% endblock %}
+        }
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ title }}</h1>
+
+        {% if error %}
+            <div class="error-message">{{ error }}</div>
+        {% endif %}
+
+        <form action="/admin/items/add" method="post">
+            <div class="form-group">
+                <label for="name">名稱:</label>
+                <input type="text" id="name" name="name" value="{{ form_data.name if form_data else '' }}" required>
+            </div>
+            <div class="form-group">
+                <label for="description">描述:</label>
+                <textarea id="description" name="description">{{ form_data.description if form_data else '' }}</textarea>
+            </div>
+            <div class="form-group">
+                <label for="category">類別:</label>
+                <input type="text" id="category" name="category" value="{{ form_data.category if form_data else '' }}" required>
+            </div>
+            <div class="form-group">
+                <label for="weight_per_unit">單位重量:</label>
+                <input type="number" id="weight_per_unit" name="weight_per_unit" step="0.01" value="{{ form_data.weight_per_unit if form_data else '' }}" required>
+            </div>
+            <div class="form-group">
+                <label for="volume_per_unit">單位體積:</label>
+                <input type="number" id="volume_per_unit" name="volume_per_unit" step="0.01" value="{{ form_data.volume_per_unit if form_data else '' }}" required>
+            </div>
+            <div class="form-group">
+                <label for="base_value_per_unit">單位基礎價值:</label>
+                <input type="number" id="base_value_per_unit" name="base_value_per_unit" value="{{ form_data.base_value_per_unit if form_data else '' }}" required>
+            </div>
+            <div class="form-group checkbox-group">
+                <input type="checkbox" id="is_fragile" name="is_fragile" {% if form_data and form_data.is_fragile %}checked{% endif %}>
+                <label for="is_fragile">易碎品</label>
+            </div>
+            <div class="form-group checkbox-group">
+                <input type="checkbox" id="is_perishable" name="is_perishable" {% if form_data and form_data.is_perishable %}checked{% endif %}>
+                <label for="is_perishable">易腐品</label>
+            </div>
+            <div class="form-group">
+                <label for="spoil_duration_hours">腐壞時長 (小時):</label>
+                <input type="number" id="spoil_duration_hours" name="spoil_duration_hours" value="{{ form_data.spoil_duration_hours if form_data else '' }}">
+            </div>
+            <div class="form-group">
+                <label for="required_permit_type">所需許可證類型:</label>
+                <input type="text" id="required_permit_type" name="required_permit_type" value="{{ form_data.required_permit_type if form_data else '' }}">
+            </div>
+            <div class="form-group">
+                <label for="icon_url">圖標 URL:</label>
+                <input type="text" id="icon_url" name="icon_url" value="{{ form_data.icon_url if form_data else '' }}">
+            </div>
+            <button type="submit">新增物品</button>
+        </form>
+        <a href="/admin/items" class="back-link">返回物品列表</a>
+    </div>
+</body>
+</html>

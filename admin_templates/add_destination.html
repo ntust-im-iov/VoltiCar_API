@@ -1,0 +1,331 @@
+{% extends "base.html" %}
+
+{% block title %}新增目的地 - Volticar 管理面板{% endblock %}
+
+{% block content %}
+<!-- 頁面標題 -->
+<div class="page-header fade-in">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/admin/" class="text-white">儀表板</a></li>
+            <li class="breadcrumb-item"><a href="/admin/destinations" class="text-white">目的地</a></li>
+            <li class="breadcrumb-item active text-white">新增目的地</li>
+        </ol>
+    </nav>
+    <h1><i class="fas fa-map-marker-alt"></i> 新增目的地</h1>
+    <p class="mb-0">建立遊戲中的取貨和送達地點</p>
+</div>
+
+<!-- 錯誤訊息 -->
+{% if error %}
+<div class="alert alert-danger fade-in" role="alert">
+    <i class="fas fa-exclamation-triangle"></i> {{ error }}
+</div>
+{% endif %}
+
+<!-- 表單 -->
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card fade-in">
+            <div class="card-header">
+                <h5><i class="fas fa-plus-circle"></i> 目的地資訊</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" id="destinationForm" novalidate 
+                      action="{% if edit_mode %}/admin/destinations/{{ item_id }}/edit{% else %}/admin/destinations/add{% endif %}">
+                    <div class="row g-3">
+                        <!-- 基本資訊 -->
+                        <div class="col-12">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-info-circle"></i> 基本資訊</h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="name" class="form-label">目的地名稱 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="name" name="name" 
+                                   value="{{ form_data.name if form_data else '' }}" required
+                                   placeholder="例: 台北101商業區">
+                            <div class="invalid-feedback">請輸入目的地名稱</div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="region" class="form-label">所屬區域 <span class="text-danger">*</span></label>
+                            <select class="form-select select2" id="region" name="region" required>
+                                <option value="">選擇區域</option>
+                                <option value="台北市" {{ 'selected' if form_data and form_data.region == '台北市' }}>台北市</option>
+                                <option value="新北市" {{ 'selected' if form_data and form_data.region == '新北市' }}>新北市</option>
+                                <option value="桃園市" {{ 'selected' if form_data and form_data.region == '桃園市' }}>桃園市</option>
+                                <option value="台中市" {{ 'selected' if form_data and form_data.region == '台中市' }}>台中市</option>
+                                <option value="台南市" {{ 'selected' if form_data and form_data.region == '台南市' }}>台南市</option>
+                                <option value="高雄市" {{ 'selected' if form_data and form_data.region == '高雄市' }}>高雄市</option>
+                                <option value="新竹市" {{ 'selected' if form_data and form_data.region == '新竹市' }}>新竹市</option>
+                                <option value="基隆市" {{ 'selected' if form_data and form_data.region == '基隆市' }}>基隆市</option>
+                                <option value="其他" {{ 'selected' if form_data and form_data.region == '其他' }}>其他</option>
+                            </select>
+                            <div class="invalid-feedback">請選擇所屬區域</div>
+                        </div>
+                        
+                        <div class="col-12">
+                            <label for="description" class="form-label">目的地描述</label>
+                            <textarea class="form-control" id="description" name="description" rows="3"
+                                      placeholder="描述這個目的地的特點、功能或重要性">{{ form_data.description if form_data else '' }}</textarea>
+                        </div>
+                        
+                        <!-- 地理位置 -->
+                        <div class="col-12 mt-4">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-globe"></i> 地理位置</h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="latitude" class="form-label">緯度 <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="latitude" name="latitude" 
+                                   value="{{ form_data.coordinates.coordinates[1] if form_data and form_data.coordinates else '' }}" 
+                                   step="0.000001" min="-90" max="90" required placeholder="25.033964">
+                            <small class="text-muted">範圍: -90 到 90</small>
+                            <div class="invalid-feedback">請輸入有效的緯度</div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="longitude" class="form-label">經度 <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="longitude" name="longitude" 
+                                   value="{{ form_data.coordinates.coordinates[0] if form_data and form_data.coordinates else '' }}" 
+                                   step="0.000001" min="-180" max="180" required placeholder="121.564472">
+                            <small class="text-muted">範圍: -180 到 180</small>
+                            <div class="invalid-feedback">請輸入有效的經度</div>
+                        </div>
+                        
+                        <div class="col-12">
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle"></i>
+                                <strong>提示：</strong>您可以使用 Google Maps 取得精確的經緯度座標。
+                                在 Google Maps 中右鍵點擊位置，選擇座標數值即可複製。
+                            </div>
+                        </div>
+                        
+                        <!-- 解鎖設定 -->
+                        <div class="col-12 mt-4">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-unlock"></i> 解鎖設定</h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="is_unlocked_by_default" 
+                                       name="is_unlocked_by_default" 
+                                       {{ 'checked' if not form_data or form_data.is_unlocked_by_default }}>
+                                <label class="form-check-label" for="is_unlocked_by_default">
+                                    <i class="fas fa-unlock-alt"></i> 預設解鎖
+                                </label>
+                                <div class="form-text">新玩家可以直接使用此目的地</div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6" id="unlock-requirements" style="display: none;">
+                            <label for="required_player_level" class="form-label">需要玩家等級</label>
+                            <input type="number" class="form-control" id="required_player_level" 
+                                   name="required_player_level" min="1" max="100" placeholder="5">
+                            <small class="text-muted">玩家需要達到的等級才能解鎖</small>
+                        </div>
+                        
+                        <!-- 可用服務 -->
+                        <div class="col-12 mt-4">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-concierge-bell"></i> 可用服務</h6>
+                        </div>
+                        
+                        <div class="col-12">
+                            <div class="row g-2">
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="service_pickup" 
+                                               name="services" value="取貨">
+                                        <label class="form-check-label" for="service_pickup">
+                                            <i class="fas fa-hand-paper"></i> 取貨服務
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="service_delivery" 
+                                               name="services" value="送貨">
+                                        <label class="form-check-label" for="service_delivery">
+                                            <i class="fas fa-shipping-fast"></i> 送貨服務
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="service_charging" 
+                                               name="services" value="充電">
+                                        <label class="form-check-label" for="service_charging">
+                                            <i class="fas fa-charging-station"></i> 充電服務
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="service_repair" 
+                                               name="services" value="維修">
+                                        <label class="form-check-label" for="service_repair">
+                                            <i class="fas fa-tools"></i> 維修服務
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="service_parking" 
+                                               name="services" value="停車">
+                                        <label class="form-check-label" for="service_parking">
+                                            <i class="fas fa-parking"></i> 停車服務
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="service_warehouse" 
+                                               name="services" value="倉儲">
+                                        <label class="form-check-label" for="service_warehouse">
+                                            <i class="fas fa-warehouse"></i> 倉儲服務
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 圖片設定 -->
+                        <div class="col-12 mt-4">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-image"></i> 圖片設定</h6>
+                        </div>
+                        
+                        <div class="col-12">
+                            <label for="icon_url" class="form-label">目的地圖示 URL</label>
+                            <input type="url" class="form-control" id="icon_url" name="icon_url" 
+                                   value="{{ form_data.icon_url if form_data else '' }}" 
+                                   placeholder="https://example.com/destination-icon.png">
+                            <small class="text-muted">目的地的圖示，用於地圖顯示</small>
+                        </div>
+                        
+                        <!-- 按鈕區域 -->
+                        <div class="col-12 mt-4 pt-3 border-top">
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-danger">
+                                    <i class="fas fa-save"></i> {% if edit_mode %}更新目的地{% else %}儲存目的地{% endif %}
+                                </button>
+                                <a href="/admin/destinations" class="btn btn-secondary">
+                                    <i class="fas fa-arrow-left"></i> 返回列表
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    // 解鎖設定控制
+    $('#is_unlocked_by_default').on('change', function() {
+        if ($(this).is(':checked')) {
+            $('#unlock-requirements').hide();
+            $('#required_player_level').attr('required', false);
+        } else {
+            $('#unlock-requirements').show();
+            $('#required_player_level').attr('required', true);
+        }
+    });
+    
+    // 初始化解鎖設定顯示
+    if (!$('#is_unlocked_by_default').is(':checked')) {
+        $('#unlock-requirements').show();
+    }
+    
+    // 圖片預覽
+    $('#icon_url').on('input', function() {
+        const url = $(this).val();
+        if (url && isValidUrl(url)) {
+            $('#icon-preview').remove();
+            const previewHtml = `
+                <div id="icon-preview" class="mt-2">
+                    <img src="${url}" class="img-thumbnail" style="max-width: 60px; max-height: 60px;" 
+                         onerror="this.style.display='none'">
+                </div>
+            `;
+            $(this).parent().append(previewHtml);
+        }
+    });
+    
+    function isValidUrl(string) {
+        try {
+            new URL(string);
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }
+    
+    // 表單提交處理
+    $('#destinationForm').on('submit', function(e) {
+        const lat = parseFloat($('#latitude').val());
+        const lng = parseFloat($('#longitude').val());
+        
+        // 緯度經度驗證
+        if (lat < -90 || lat > 90) {
+            e.preventDefault();
+            $('#latitude').addClass('is-invalid');
+            alert('緯度必須在 -90 到 90 之間');
+            return false;
+        }
+        
+        if (lng < -180 || lng > 180) {
+            e.preventDefault();
+            $('#longitude').addClass('is-invalid');
+            alert('經度必須在 -180 到 180 之間');
+            return false;
+        }
+        
+        // 收集選擇的服務
+        const selectedServices = [];
+        $('input[name="services"]:checked').each(function() {
+            selectedServices.push($(this).val());
+        });
+        
+        if (selectedServices.length > 0) {
+            $('<input>').attr({
+                type: 'hidden',
+                name: 'available_services',
+                value: JSON.stringify(selectedServices)
+            }).appendTo('#destinationForm');
+        }
+        
+        // 建立座標格式
+        $('<input>').attr({
+            type: 'hidden',
+            name: 'coordinates',
+            value: JSON.stringify({
+                type: "Point",
+                coordinates: [lng, lat]
+            })
+        }).appendTo('#destinationForm');
+    });
+    
+    // 地圖預覽功能（可選）
+    $('#latitude, #longitude').on('input', function() {
+        const lat = $('#latitude').val();
+        const lng = $('#longitude').val();
+        
+        if (lat && lng) {
+            $('#map-preview').remove();
+            const mapHtml = `
+                <div id="map-preview" class="mt-2 text-center">
+                    <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-map"></i> 在 Google Maps 中查看
+                    </a>
+                </div>
+            `;
+            $('#longitude').parent().append(mapHtml);
+        }
+    });
+});
+</script>
+{% endblock %}

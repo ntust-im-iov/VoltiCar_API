@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - Volticar 管理面板{% endblock %}
+
+{% block content %}
+<!-- 頁面標題 -->
+<div class="page-header fade-in">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/admin/" class="text-white">儀表板</a></li>
+            <li class="breadcrumb-item"><a href="/admin/vehicles" class="text-white">車輛定義</a></li>
+            <li class="breadcrumb-item active text-white">{{ title }}</li>
+        </ol>
+    </nav>
+    <h1><i class="fas fa-car-side"></i> {{ title }}</h1>
+    <p class="mb-0">填寫以下表單來新增車輛定義到遊戲資料庫</p>
+</div>
+
+<!-- 錯誤訊息 -->
+{% if error %}
+<div class="alert alert-danger fade-in" role="alert">
+    <i class="fas fa-exclamation-triangle"></i> {{ error }}
+</div>
+{% endif %}
+
+<!-- 表單 -->
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card fade-in">
+            <div class="card-header">
+                <h5><i class="fas fa-plus-circle"></i> 車輛定義資訊</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" id="vehicleForm" novalidate 
+                      action="{% if edit_mode %}/admin/vehicles/{{ item_id }}/edit{% else %}/admin/vehicles/add{% endif %}">
+                    <div class="row g-3">
+                        <!-- 基本資訊 -->
+                        <div class="col-12">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-info-circle"></i> 基本資訊</h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="name" class="form-label">車輛名稱 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="name" name="name" 
+                                   value="{{ form_data.name if form_data else '' }}" required
+                                   placeholder="例: 特斯拉 Model S">
+                            <div class="invalid-feedback">請輸入車輛名稱</div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="type" class="form-label">車輛類型 <span class="text-danger">*</span></label>
+                            <select class="form-select select2" id="type" name="type" required>
+                                <option value="">選擇車輛類型</option>
+                                <option value="轎車" {{ 'selected' if form_data and form_data.type == '轎車' }}>轎車</option>
+                                <option value="休旅車" {{ 'selected' if form_data and form_data.type == '休旅車' }}>休旅車</option>
+                                <option value="貨車" {{ 'selected' if form_data and form_data.type == '貨車' }}>貨車</option>
+                                <option value="卡車" {{ 'selected' if form_data and form_data.type == '卡車' }}>卡車</option>
+                                <option value="機車" {{ 'selected' if form_data and form_data.type == '機車' }}>機車</option>
+                                <option value="電動滑板車" {{ 'selected' if form_data and form_data.type == '電動滑板車' }}>電動滑板車</option>
+                            </select>
+                            <div class="invalid-feedback">請選擇車輛類型</div>
+                        </div>
+                        
+                        <div class="col-12">
+                            <label for="description" class="form-label">車輛描述</label>
+                            <textarea class="form-control" id="description" name="description" rows="3"
+                                      placeholder="描述這輛車的特點、性能或用途">{{ form_data.description if form_data else '' }}</textarea>
+                        </div>
+                        
+                        <!-- 性能參數 -->
+                        <div class="col-12 mt-4">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-cogs"></i> 性能參數</h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="max_load_weight" class="form-label">最大載重 (kg) <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="max_load_weight" name="max_load_weight" 
+                                       value="{{ form_data.max_load_weight if form_data else '' }}" 
+                                       step="0.1" min="0" required placeholder="500">
+                                <span class="input-group-text">公斤</span>
+                            </div>
+                            <div class="invalid-feedback">請輸入最大載重</div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="max_load_volume" class="form-label">最大載運體積 (m³) <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="max_load_volume" name="max_load_volume" 
+                                       value="{{ form_data.max_load_volume if form_data else '' }}" 
+                                       step="0.1" min="0" required placeholder="2.5">
+                                <span class="input-group-text">立方米</span>
+                            </div>
+                            <div class="invalid-feedback">請輸入最大載運體積</div>
+                        </div>
+                        
+                        <!-- 價格設定 -->
+                        <div class="col-12 mt-4">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-dollar-sign"></i> 價格設定</h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="base_price" class="form-label">基礎價格 (購買價)</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="base_price" name="base_price" 
+                                       value="{{ form_data.base_price if form_data else '' }}" 
+                                       min="0" placeholder="50000">
+                            </div>
+                            <small class="text-muted">玩家購買此車輛的價格</small>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="rental_price_per_session" class="form-label">租賃價格 (每次任務)</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="rental_price_per_session" name="rental_price_per_session" 
+                                       value="{{ form_data.rental_price_per_session if form_data else '' }}" 
+                                       min="0" placeholder="1000">
+                            </div>
+                            <small class="text-muted">玩家租賃此車輛執行任務的價格</small>
+                        </div>
+                        
+                        <!-- 可用性設定 -->
+                        <div class="col-12 mt-4">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-unlock-alt"></i> 可用性設定</h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="availability_type" class="form-label">可用性類型 <span class="text-danger">*</span></label>
+                            <select class="form-select select2" id="availability_type" name="availability_type" required>
+                                <option value="">選擇可用性類型</option>
+                                <option value="購買" {{ 'selected' if form_data and form_data.availability_type == '購買' }}>可購買</option>
+                                <option value="租賃" {{ 'selected' if form_data and form_data.availability_type == '租賃' }}>僅可租賃</option>
+                                <option value="購買和租賃" {{ 'selected' if form_data and form_data.availability_type == '購買和租賃' }}>可購買和租賃</option>
+                                <option value="獎勵" {{ 'selected' if form_data and form_data.availability_type == '獎勵' }}>任務獎勵</option>
+                            </select>
+                            <div class="invalid-feedback">請選擇可用性類型</div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="required_level_to_unlock" class="form-label">解鎖等級 <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="required_level_to_unlock" 
+                                   name="required_level_to_unlock" 
+                                   value="{{ form_data.required_level_to_unlock if form_data else '1' }}" 
+                                   min="1" max="100" required>
+                            <small class="text-muted">玩家需要達到的等級才能解鎖此車輛</small>
+                            <div class="invalid-feedback">請輸入解鎖等級</div>
+                        </div>
+                        
+                        <!-- 圖片設定 -->
+                        <div class="col-12 mt-4">
+                            <h6 class="text-muted border-bottom pb-2"><i class="fas fa-images"></i> 圖片設定</h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="icon_url" class="form-label">圖示 URL</label>
+                            <input type="url" class="form-control" id="icon_url" name="icon_url" 
+                                   value="{{ form_data.icon_url if form_data else '' }}" 
+                                   placeholder="https://example.com/icon.png">
+                            <small class="text-muted">小圖示，用於列表顯示</small>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="image_url" class="form-label">主圖片 URL</label>
+                            <input type="url" class="form-control" id="image_url" name="image_url" 
+                                   value="{{ form_data.image_url if form_data else '' }}" 
+                                   placeholder="https://example.com/vehicle.jpg">
+                            <small class="text-muted">車輛詳細圖片</small>
+                        </div>
+                        
+                        <!-- 按鈕區域 -->
+                        <div class="col-12 mt-4 pt-3 border-top">
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-save"></i> {% if edit_mode %}更新車輛定義{% else %}儲存車輛定義{% endif %}
+                                </button>
+                                <a href="/admin/vehicles" class="btn btn-secondary">
+                                    <i class="fas fa-arrow-left"></i> 返回列表
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function() {
+        // 預覽圖片功能
+        $('#icon_url, #image_url').on('input', function() {
+            const url = $(this).val();
+            const fieldName = $(this).attr('name');
+            
+            if (url && isValidUrl(url)) {
+                const previewId = 'preview_' + fieldName;
+                const previewHtml = `
+                    <div id="${previewId}" class="mt-2">
+                        <img src="${url}" class="img-thumbnail" style="max-width: 100px; max-height: 100px;" 
+                             onerror="this.style.display='none'">
+                    </div>
+                `;
+                
+                $(`#${previewId}`).remove();
+                $(this).parent().append(previewHtml);
+            }
+        });
+        
+        // URL 驗證
+        function isValidUrl(string) {
+            try {
+                new URL(string);
+                return true;
+            } catch (_) {
+                return false;
+            }
+        }
+        
+        // 表單提交前的額外驗證
+        $('#vehicleForm').on('submit', function(e) {
+            const maxWeight = parseFloat($('#max_load_weight').val());
+            const maxVolume = parseFloat($('#max_load_volume').val());
+            
+            if (maxWeight <= 0) {
+                e.preventDefault();
+                $('#max_load_weight').addClass('is-invalid');
+                alert('最大載重必須大於 0');
+                return false;
+            }
+            
+            if (maxVolume <= 0) {
+                e.preventDefault();
+                $('#max_load_volume').addClass('is-invalid');
+                alert('最大載運體積必須大於 0');
+                return false;
+            }
+        });
+    });
+</script>
+{% endblock %}
+        }
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ title }}</h1>
+
+        {% if error %}
+            <div class="error-message">{{ error }}</div>
+        {% endif %}
+
+        <form action="/admin/vehicles/add" method="post">
+            <div class="form-group">
+                <label for="name">名稱:</label>
+                <input type="text" id="name" name="name" value="{{ form_data.name if form_data else '' }}" required>
+            </div>
+            <div class="form-group">
+                <label for="type">類型:</label>
+                <input type="text" id="type" name="type" value="{{ form_data.type if form_data else '' }}" required>
+            </div>
+            <div class="form-group">
+                <label for="description">描述:</label>
+                <textarea id="description" name="description">{{ form_data.description if form_data else '' }}</textarea>
+            </div>
+            <div class="form-group">
+                <label for="max_load_weight">最大載重 (kg):</label>
+                <input type="number" id="max_load_weight" name="max_load_weight" step="0.01" value="{{ form_data.max_load_weight if form_data else '' }}" required>
+            </div>
+            <div class="form-group">
+                <label for="max_load_volume">最大載積 (m³):</label>
+                <input type="number" id="max_load_volume" name="max_load_volume" step="0.01" value="{{ form_data.max_load_volume if form_data else '' }}" required>
+            </div>
+            <div class="form-group">
+                <label for="base_price">基礎價格:</label>
+                <input type="number" id="base_price" name="base_price" value="{{ form_data.base_price if form_data else '' }}">
+            </div>
+            <div class="form-group">
+                <label for="rental_price_per_session">每次租賃價格:</label>
+                <input type="number" id="rental_price_per_session" name="rental_price_per_session" value="{{ form_data.rental_price_per_session if form_data else '' }}">
+            </div>
+            <div class="form-group">
+                <label for="availability_type">可用性類型:</label>
+                <select id="availability_type" name="availability_type" required>
+                    <option value="">請選擇</option>
+                    <option value="always_available" {% if form_data and form_data.availability_type == 'always_available' %}selected{% endif %}>始終可用</option>
+                    <option value="limited_time" {% if form_data and form_data.availability_type == 'limited_time' %}selected{% endif %}>限時</option>
+                    <option value="event_only" {% if form_data and form_data.availability_type == 'event_only' %}selected{% endif %}>僅活動</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="required_level_to_unlock">解鎖所需等級:</label>
+                <input type="number" id="required_level_to_unlock" name="required_level_to_unlock" value="{{ form_data.required_level_to_unlock if form_data else 1 }}" required>
+            </div>
+            <div class="form-group">
+                <label for="icon_url">圖標 URL:</label>
+                <input type="text" id="icon_url" name="icon_url" value="{{ form_data.icon_url if form_data else '' }}">
+            </div>
+            <div class="form-group">
+                <label for="image_url">圖片 URL:</label>
+                <input type="text" id="image_url" name="image_url" value="{{ form_data.image_url if form_data else '' }}">
+            </div>
+            <button type="submit">新增車輛</button>
+        </form>
+        <a href="/admin/vehicles" class="back-link">返回車輛列表</a>
+    </div>
+</body>
+</html>

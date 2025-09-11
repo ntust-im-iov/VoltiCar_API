@@ -62,7 +62,7 @@ async def get_stations_by_city(
         cached_data = await get_cache(redis, cache_key)
         if cached_data is not None:
             # 假設 cached_data 是 dict 列表，轉換為 StationSummary
-            return [StationSummary(**s) for s in cached_data]
+            return [StationSummary.model_validate(s, from_attributes=True) for s in cached_data]
 
     collection_name = CITY_MAPPING.get(city, city)
     logger.info(f"查詢城市: {city}, 映射到集合: {collection_name}, 分頁: skip={skip}, limit={limit}")
@@ -133,7 +133,7 @@ async def get_stations_by_city(
         logger.info(f"充電站資訊加載完成並轉換為簡化摘要模型")
 
         if redis: 
-            await set_cache(redis, cache_key, [s.dict() for s in response_data], expire=3600) # 改用 .dict() 並設定 TTL 為 3600 秒 (1 小時)
+            await set_cache(redis, cache_key, [s.model_dump() for s in response_data], expire=3600) # 改用 .model_dump() 並設定 TTL 為 3600 秒 (1 小時)
         
         return response_data
 
@@ -241,7 +241,7 @@ async def get_all_stations_overview(
     if redis:
         cached_data = await get_cache(redis, cache_key)
         if cached_data is not None:
-            return [StationSummary(**s) for s in cached_data]
+            return [StationSummary.model_validate(s, from_attributes=True) for s in cached_data]
             
     try:
         query = {}
@@ -317,7 +317,7 @@ async def get_all_stations_overview(
         logger.info(f"從 AllChargingStations 集合獲取了 {count} 個充電站的概覽資訊並轉換為簡化摘要 (分頁 skip={skip}, limit={limit})。")
 
         if redis:
-            await set_cache(redis, cache_key, [s.dict() for s in response_data], expire=3600) # Use .dict() 並設定 TTL 為 3600 秒 (1 小時)
+            await set_cache(redis, cache_key, [s.model_dump() for s in response_data], expire=3600) # Use .model_dump() 並設定 TTL 為 3600 秒 (1 小時)
             
         return response_data
 
@@ -331,7 +331,7 @@ async def get_all_stations_overview(
         )
 
 # 創建新充電站
-@router.post("/", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED, include_in_schema=False)
 @limiter.limit("30/minute")
 async def create_station(
     request: Request,
