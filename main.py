@@ -17,6 +17,71 @@ import signal # 導入 signal 模組
 import time # 導入 time 模組
 import datetime # 導入 datetime 模組
 
+# Add these imports
+from bson import ObjectId
+from app.models.user import PyObjectId # Or from app.models.game_models
+
+# 設置環境變量，確保在程序開始時就有正確的設定
+os.environ["PYTHONIOENCODING"] = "utf-8"
+if "DATABASE_URL" not in os.environ:
+    os.environ["DATABASE_URL"] = "mongodb://Volticar:RJW1128@59.126.6.46:27017/?authSource=admin&ssl=false"
+
+# --- 設定日誌 ---
+log_directory = "logs"
+# 確保日誌目錄存在
+os.makedirs(log_directory, exist_ok=True)
+
+# 生成帶時間戳的日誌檔名
+current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+log_file = os.path.join(log_directory, f"api_{current_time}.log")
+
+# 獲取根 logger
+logger = logging.getLogger()
+logger.setLevel(logging.INFO) # 設置最低日誌級別
+
+# 移除可能存在的舊 handlers (如果有的話)
+for handler in logger.handlers[:]:
+    logger.removeHandler(handler)
+
+# 創建格式器
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+# 創建控制台 handler
+stream_handler = logging.StreamHandler()
+stream_handler.setFormatter(formatter)
+logger.addHandler(stream_handler)
+
+# 創建檔案 handler (FileHandler)，使用帶時間戳的檔名
+file_handler = logging.FileHandler(log_file, encoding='utf-8')
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
+# --- Uvicorn 日誌配置結束 ---
+
+logger.info(f"日誌系統已設定完成，本次啟動日誌將輸出到控制台和 {log_file}")
+# --- 日誌設定結束 ---
+
+# 導入 admin
+from admin import admin_api
+import os
+
+# 先初始化app實例
+app = FastAPI(
+    title="電動汽車充電站API",
+    description="用於管理電動汽車充電站和用戶充電記錄的API",
+    version="1.0.0",
+    swagger_ui_parameters={
+        "docExpansion": "list", # Changed from "none" to "list" to expand endpoints by default
+        "defaultModelsExpandDepth": -1
+    },
+    json_encoders={
+        ObjectId: str,
+        PyObjectId: str
+    }
+)
+
 # 設置環境變量，確保在程序開始時就有正確的設定
 os.environ["PYTHONIOENCODING"] = "utf-8"
 if "DATABASE_URL" not in os.environ:
@@ -65,6 +130,9 @@ logger.addHandler(file_handler)
 logger.info(f"日誌系統已設定完成，本次啟動日誌將輸出到控制台和 {log_file}")
 # --- 日誌設定結束 ---
 
+# 導入 admin
+from admin import admin_api
+import os
 
 # 先初始化app實例
 app = FastAPI(
@@ -72,7 +140,7 @@ app = FastAPI(
     description="用於管理電動汽車充電站和用戶充電記錄的API",
     version="1.0.0",
     swagger_ui_parameters={
-        "docExpansion": "none",
+        "docExpansion": "list", # Changed from "none" to "list" to expand endpoints by default
         "defaultModelsExpandDepth": -1
     }
 )
@@ -110,6 +178,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 掛載後台管理系統
+app.mount("/admin", admin_api)
 
 # 全局異常處理
 @app.exception_handler(Exception)
@@ -174,16 +245,6 @@ except Exception as e:
 # Frontend serving logic has been removed as it's not needed for this API-only setup.
 
 # Restore original root route
-@app.get("/")
-async def root():
-    return {
-        "message": "歡迎使用電動汽車充電站API",
-        "version": "1.0.0",
-        "docs_url": "/docs"
-    }
-
-# --- Catch-all route removed ---
-
 
 from app.database.mongodb import connect_and_initialize_db, close_mongo_connection # Import new async functions
 
@@ -194,7 +255,11 @@ async def startup_event_handler():
     應用程式啟動事件。
     """
     # 初始化 MongoDB
-    await connect_and_initialize_db() 
+    await connect_and_initialize_db()
+
+    # 初始化 fastapi-admin
+    # 這會執行 admin.py 中的 startup 事件
+    await admin_api.router.startup()
 
     # 初始化 Redis 連線池
     redis_host = os.getenv("REDIS_HOST", "localhost")
@@ -222,6 +287,9 @@ async def shutdown_event_handler():
     """
     應用程式關閉事件。
     """
+    # 關閉 fastapi-admin
+    await admin_api.router.shutdown()
+
     # 關閉 MongoDB 連線
     await close_mongo_connection() 
 

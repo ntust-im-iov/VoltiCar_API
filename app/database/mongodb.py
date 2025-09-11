@@ -246,20 +246,17 @@ async def initialize_db_and_collections():
         await safely_create_index(
             login_records_collection, "user_id"
         )  # This should refer to User.user_id
-        await safely_create_index(
-            login_records_collection, "login_record_id", unique=True
-        )  # Index for the new custom ID
         await safely_create_index(login_records_collection, "login_timestamp")
 
         # player_owned_vehicles_collection (points to "Vehicles")
         print("玩家擁有車輛 (Vehicles) 集合索引:")
         # Assuming player_vehicle_id is the custom UUID for PlayerOwnedVehicle instances
+        # Correcting field name from player_vehicle_id to instance_id to match the model
         await safely_create_index(
-            player_owned_vehicles_collection, "player_vehicle_id", unique=True
+            player_owned_vehicles_collection, "instance_id", unique=True
         )
-        await safely_create_index(
-            player_owned_vehicles_collection, "player_id"
-        )  # Refers to User.user_id
+        # Correcting field name from player_id to user_id to match the model
+        await safely_create_index(player_owned_vehicles_collection, "user_id")
 
         # task_definitions_collection (points to "TaskDefinitions")
         print("任務定義 (TaskDefinitions) 集合索引:")
@@ -316,7 +313,8 @@ async def initialize_db_and_collections():
         await safely_create_index(
             player_tasks_collection, "player_task_id", unique=True
         )
-        await safely_create_index(player_tasks_collection, "player_id")
+        # Correcting field name from player_id to user_id to match the model
+        await safely_create_index(player_tasks_collection, "user_id")
         await safely_create_index(player_tasks_collection, "task_id")
         await safely_create_index(player_tasks_collection, "status")
         await safely_create_index(player_tasks_collection, "linked_game_session_id")
@@ -333,10 +331,11 @@ async def initialize_db_and_collections():
 
         print("玩家倉庫 (PlayerWarehouseItems) 集合索引:")
         await player_warehouse_items_collection.create_index(
-            [("player_id", ASCENDING), ("item_id", ASCENDING)], unique=True
+            [("user_id", ASCENDING), ("item_id", ASCENDING)], unique=True
         )
-        print("  創建唯一複合索引: player_id_1_item_id_1")
+        print("  創建唯一複合索引: user_id_1_item_id_1")
         await safely_create_index(
+            # This index might be redundant if the compound index is the primary way to look up items.
             player_warehouse_items_collection, "player_warehouse_item_id", unique=True
         )
 
@@ -352,7 +351,8 @@ async def initialize_db_and_collections():
         await safely_create_index(
             game_sessions_collection, "game_session_id", unique=True
         )
-        await safely_create_index(game_sessions_collection, "player_id")
+        # Correcting field name from player_id to user_id to match the model
+        await safely_create_index(game_sessions_collection, "user_id")
         await safely_create_index(game_sessions_collection, "status")
 
         print("新遊戲集合索引創建完成!")

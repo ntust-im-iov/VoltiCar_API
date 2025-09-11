@@ -16,21 +16,17 @@ from app.models.game_models import (
     VehicleUpgradePayload,
 )
 from app.database.mongodb import get_db
+from app.database import mongodb as db_provider # 引入 db_provider
 
 router = APIRouter()
-
-# Dependency to get the database instance
-async def get_database():
-    return await get_db()
 
 @router.post("/integrations/charge-session/report", status_code=201)
 async def report_charge_session(
     report: ChargeSessionReport,
-    db = Depends(get_database),
     current_user: User = Depends(get_current_user)
 ):
     # Find the vehicle to ensure it belongs to the current user
-    vehicle = await db.PlayerOwnedVehicles.find_one({
+    vehicle = await db_provider.player_owned_vehicles_collection.find_one({
         "instance_id": report.vehicle_instance_id,
         "user_id": current_user.user_id
     })
@@ -42,7 +38,7 @@ async def report_charge_session(
     carbon_points_earned = int(report.kwh_added * 10)
 
     # Update user's carbon points
-    await db.users.update_one(
+    await db_provider.users_collection.update_one(
         {"user_id": current_user.user_id},
         {"$inc": {"carbon_points": carbon_points_earned}}
     )
@@ -56,10 +52,11 @@ async def report_charge_session(
 @router.post("/player/check-in", status_code=200)
 async def check_in_at_station(
     payload: CheckInPayload,
-    db = Depends(get_database),
     current_user: User = Depends(get_current_user)
 ):
-    station = await db.Stations.find_one({"StationID": payload.station_id})
+    # 使用 getitem 語法來存取集合，避免 FastAPI 序列化問題
+    stations_collection = db_provider.charge_station_db["Stations"]
+    station = await stations_collection.find_one({"StationID": payload.station_id})
     if not station:
         raise HTTPException(status_code=404, detail="Station not found")
 
@@ -72,7 +69,7 @@ async def check_in_at_station(
         raise HTTPException(status_code=400, detail=f"User is not within the station's range. Distance: {distance:.2f} meters.")
 
     # Record the check-in
-    await db.users.update_one(
+    await db_provider.users_collection.update_one(
         {"user_id": current_user.user_id},
         {"$set": {"last_check_in": {
             "station_id": payload.station_id,
@@ -85,15 +82,14 @@ async def check_in_at_station(
 @router.get("/stations/{station_id}/tasks", response_model=List[GameTask])
 async def get_station_tasks(
     station_id: str,
-    db = Depends(get_database),
     current_user: User = Depends(get_current_user)
 ):
     # 1. Verify check-in
     if not current_user.last_check_in or current_user.last_check_in['station_id'] != station_id:
         raise HTTPException(status_code=403, detail="User must be checked in at this station to get tasks.")
 
-    # 2. Check cooldown
-    last_task_record = await db.PlayerStationTasks.find_one(
+    # 2. Check cooldown (假設 PlayerStationTasks 集合存在)
+    last_task_record = await db_provider.db["PlayerStationTasks"].find_one(
         {"user_id": current_user.user_id, "station_id": station_id},
         sort=[("generated_at", -1)]
     )
@@ -113,10 +109,10 @@ async def get_station_tasks(
     }
     new_task = GameTask(**new_task_data)
     
-    await db.GameTasks.insert_one(new_task.dict(by_alias=True))
+    await db_provider.db["GameTasks"].insert_one(new_task.dict(by_alias=True)) # 假設 GameTasks 在主 DB
     
     # Record task generation time for cooldown
-    await db.PlayerStationTasks.insert_one({
+    await db_provider.db["PlayerStationTasks"].insert_one({
         "user_id": current_user.user_id,
         "station_id": station_id,
         "generated_at": datetime.now()
@@ -129,7 +125,6 @@ import random
 @router.post("/game-session/{session_id}/trigger-event", response_model=GameEvent)
 async def trigger_game_event(
     session_id: str,
-    db = Depends(get_database),
     current_user: User = Depends(get_current_user)
 ):
     # 1. Define an event pool
@@ -145,10 +140,10 @@ async def trigger_game_event(
     # 3. Create and store the event
     game_event = GameEvent(**selected_event_data)
     
-    await db.GameEvents.insert_one(game_event.dict(by_alias=True))
+    await db_provider.db["GameEvents"].insert_one(game_event.dict(by_alias=True))
 
     # Associate event with the game session
-    await db.GameSessions.update_one(
+    await db_provider.db["GameSessions"].update_one(
         {"game_session_id": session_id, "user_id": current_user.user_id},
         {"$push": {"events": game_event.dict(by_alias=True)}}
     )
@@ -159,11 +154,10 @@ async def trigger_game_event(
 async def resolve_game_event(
     session_id: str,
     payload: ResolveEventPayload,
-    db = Depends(get_database),
     current_user: User = Depends(get_current_user)
 ):
     # 1. Find the game session and the specific event
-    game_session = await db.GameSessions.find_one({
+    game_session = await db_provider.db["GameSessions"].find_one({
         "game_session_id": session_id, 
         "user_id": current_user.user_id,
         "events.event_id": payload.event_id
@@ -182,7 +176,7 @@ async def resolve_game_event(
             raise HTTPException(status_code=400, detail="item_id is required when choice is 'use_item'.")
         
         # Check and deduct item from player's inventory
-        update_result = await db.player_items.update_one(
+        update_result = await db_provider.db["player_items"].update_one(
             {"user_id": current_user.user_id, "item_id": payload.item_id, "quantity": {"$gt": 0}},
             {"$inc": {"quantity": -1}}
         )
@@ -191,7 +185,7 @@ async def resolve_game_event(
 
     # 4. Update game state based on choice (simplified logic)
     # Mark the event as resolved
-    await db.GameSessions.update_one(
+    await db_provider.db["GameSessions"].update_one(
         {"game_session_id": session_id, "events.event_id": payload.event_id},
         {"$set": {"events.$.resolved": True, "events.$.resolved_choice": payload.choice}}
     )
@@ -199,21 +193,18 @@ async def resolve_game_event(
     return {"message": f"Event {payload.event_id} resolved with choice: {payload.choice}."}
 
 @router.get("/shop/items", response_model=List[ShopItem])
-async def get_shop_items(
-    db = Depends(get_database)
-):
-    items_cursor = db.ShopItems.find()
+async def get_shop_items():
+    items_cursor = db_provider.db["ShopItems"].find()
     items = await items_cursor.to_list(length=100) # Limit to 100 items
     return items
 
 @router.post("/shop/purchase")
 async def purchase_shop_item(
     payload: PurchasePayload,
-    db = Depends(get_database),
     current_user: User = Depends(get_current_user)
 ):
     # 1. Find the item and its price
-    item_to_purchase = await db.ShopItems.find_one({"item_id": payload.item_id})
+    item_to_purchase = await db_provider.db["ShopItems"].find_one({"item_id": payload.item_id})
     if not item_to_purchase:
         raise HTTPException(status_code=404, detail="Item not found.")
 
@@ -224,14 +215,14 @@ async def purchase_shop_item(
         raise HTTPException(status_code=400, detail="Not enough carbon points.")
 
     # 3. Deduct points
-    await db.users.update_one(
+    await db_provider.users_collection.update_one(
         {"user_id": current_user.user_id},
         {"$inc": {"carbon_points": -total_cost}}
     )
 
     # 4. Add item to player's inventory
     # Using upsert to either add a new item or increment the quantity of an existing one
-    await db.PlayerItems.update_one(
+    await db_provider.db["PlayerItems"].update_one(
         {"user_id": current_user.user_id, "item_id": payload.item_id},
         {"$inc": {"quantity": payload.quantity}},
         upsert=True
@@ -243,11 +234,10 @@ async def purchase_shop_item(
 async def upgrade_vehicle(
     instance_id: str,
     payload: VehicleUpgradePayload,
-    db = Depends(get_database),
     current_user: User = Depends(get_current_user)
 ):
     # 1. Find the player-owned vehicle
-    vehicle = await db.PlayerOwnedVehicles.find_one({
+    vehicle = await db_provider.player_owned_vehicles_collection.find_one({
         "instance_id": instance_id,
         "user_id": current_user.user_id
     })
@@ -270,7 +260,7 @@ async def upgrade_vehicle(
         raise HTTPException(status_code=400, detail="Not enough carbon points for upgrade.")
 
     # 4. Deduct points and apply upgrade
-    await db.users.update_one(
+    await db_provider.users_collection.update_one(
         {"user_id": current_user.user_id},
         {"$inc": {"carbon_points": -cost}}
     )
@@ -281,7 +271,7 @@ async def upgrade_vehicle(
     elif upgrade_type == "battery_health":
         update_field = {"$inc": {"battery_health": 5}} # Increase battery health by 5%
 
-    await db.PlayerOwnedVehicles.update_one(
+    await db_provider.player_owned_vehicles_collection.update_one(
         {"instance_id": instance_id},
         update_field
     )
