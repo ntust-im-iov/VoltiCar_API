@@ -45,30 +45,16 @@ except Exception as e:
 
 try:
     # Modified import for new task routers
-    from app.api.task_routes import task_definition_router, player_task_router
+    from app.api.task_routes import task_definition_router
 
     api_router.include_router(
         task_definition_router, prefix="/api/v1"
     )  # Add prefix here or in main.py
-    api_router.include_router(
-        player_task_router, prefix="/api/v1"
-    )  # Add prefix here or in main.py
     print("✓ 任務定義API路由已載入 (task_definition_router)")
-    print("✓ 玩家任務API路由已載入 (player_task_router)")
 except Exception as e:
     print(f"✗ 載入任務相關API路由時出錯: {str(e)}")
     traceback.print_exc(file=sys.stdout)
 
-try:
-    from app.api.game_setup_routes import game_setup_router  # New game setup router
-
-    api_router.include_router(
-        game_setup_router, prefix="/api/v1"
-    )  # Add prefix here or in main.py
-    print("✓ 遊戲設定API路由已載入 (game_setup_router)")
-except Exception as e:
-    print(f"✗ 載入遊戲設定API路由時出錯: {str(e)}")
-    traceback.print_exc(file=sys.stdout)
 
 try:
     from app.api.token_routes import router as token_router
@@ -97,4 +83,13 @@ try:
     print("✓ GitHub Webhook API路由已載入")
 except Exception as e:
     print(f"✗ 載入 GitHub Webhook API 路由時出錯: {str(e)}")
+    traceback.print_exc(file=sys.stdout)
+
+try:
+    from app.api.player_routes import router as player_router
+
+    api_router.include_router(player_router)
+    print("✓ 玩家API路由已載入")
+except Exception as e:
+    print(f"✗ 載入玩家API路由時出錯: {str(e)}")
     traceback.print_exc(file=sys.stdout)

@@ -81,8 +81,8 @@ volticar_api/
 │   │   ├── user_routes.py  # 用戶核心、認證、社群、獎勵等 (多數在 /users 前綴下)
 │   │   ├── vehicle_routes.py # 玩家擁有車輛實例管理 (prefix: /vehicles)
 │   │   ├── station_routes.py # 充電站管理 (prefix: /stations)
-│   │   ├── task_routes.py  # 任務定義與玩家任務實例 (prefixes: /api/v1/tasks, /api/v1/player/tasks)
-│   │   ├── game_setup_routes.py # 遊戲會話準備流程 (prefix: /api/v1)
+│   │   ├── task_routes.py  # 任務定義 (prefix: /api/v1/tasks)
+│   │   ├── player_routes.py # 玩家遊戲數據、會話、任務管理 (prefix: /api/v1/player)
 │   │   ├── token_routes.py # Token 相關 (prefix: /token)
 │   │   └── achievement_routes.py # 成就相關 (prefix: /achievements)
 │   │
@@ -91,6 +91,7 @@ volticar_api/
 │   │
 │   ├── models/             # Pydantic 數據模型
 │   │   ├── user.py         # 用戶相關模型 (包含註冊、登入、OTP、FCM等)
+│   │   ├── player.py       # 玩家遊戲數據模型 (遊戲會話、倉庫、任務等)
 │   │   ├── station.py      # 充電站模型
 │   │   └── game_models.py  # 遊戲相關模型 (車輛、物品、任務、目的地、遊戲事件、商店物品等)
 │   │
