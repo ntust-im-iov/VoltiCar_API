@@ -10,9 +10,10 @@ class PyObjectId(ObjectId):
     @classmethod
     def __get_pydantic_core_schema__(cls, source_type, handler):
         """Pydantic v2 compatible schema generation"""
+        # 允許任何輸入類型，並將其傳遞給 'validate' 函數進行處理
         return core_schema.with_info_before_validator_function(
             cls.validate,
-            core_schema.str_schema(),
+            core_schema.any_schema(),  # 從 str_schema() 改為 any_schema()
             serialization=core_schema.to_string_ser_schema()
         )
 
@@ -53,8 +54,6 @@ class User(BaseModel):
     login_type: str = "normal"
     role: str = Field(default="player", description="User role (player or admin)")
     
-    experience_points: int = Field(default=0)
-    level: int = Field(default=1)
     currency_balance: int = Field(default=0)
     carbon_points: int = Field(default=0)
     current_game_session_setup: Optional[CurrentGameSessionSetup] = None

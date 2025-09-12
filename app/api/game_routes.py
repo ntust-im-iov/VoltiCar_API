@@ -20,11 +20,16 @@ from app.database import mongodb as db_provider # 引入 db_provider
 
 router = APIRouter()
 
-@router.post("/integrations/charge-session/report", status_code=201)
+@router.post("/integrations/charge-session/report", status_code=201, summary="回報充電會話以獲得碳積分")
 async def report_charge_session(
     report: ChargeSessionReport,
     current_user: User = Depends(get_current_user)
 ):
+    """
+    （模擬整合）接收來自充電樁的充電完成報告。
+    - 根據充電量 (`kwh_added`) 計算並給予玩家碳積分。
+    - 驗證回報的車輛實例是否屬於當前用戶。
+    """
     # Find the vehicle to ensure it belongs to the current user
     vehicle = await db_provider.player_owned_vehicles_collection.find_one({
         "instance_id": report.vehicle_instance_id,
@@ -49,12 +54,18 @@ async def report_charge_session(
         "carbon_points_earned": carbon_points_earned
     }
 
-@router.post("/player/check-in", status_code=200)
+@router.post("/player/check-in", status_code=200, summary="在充電站簽到")
 async def check_in_at_station(
     payload: CheckInPayload,
     current_user: User = Depends(get_current_user)
 ):
-    # 使用 getitem 語法來存取集合，避免 FastAPI 序列化問題
+    """
+    允許玩家在地理位置上靠近充電站時進行簽到。
+    - 驗證玩家的座標是否在充電站的特定範圍內（例如 100 公尺）。
+    - 簽到是領取該站點任務的前提條件。
+    """
+    if db_provider.charge_station_db is None:
+        raise HTTPException(status_code=503, detail="Database service not initialized")
     stations_collection = db_provider.charge_station_db["Stations"]
     station = await stations_collection.find_one({"StationID": payload.station_id})
     if not station:
@@ -79,17 +90,24 @@ async def check_in_at_station(
 
     return {"message": f"Successfully checked in at station {payload.station_id}"}
 
-@router.get("/stations/{station_id}/tasks", response_model=List[GameTask])
+@router.get("/stations/{station_id}/tasks", response_model=List[GameTask], summary="獲取特定充電站的任務")
 async def get_station_tasks(
     station_id: str,
     current_user: User = Depends(get_current_user)
 ):
+    """
+    獲取玩家在特定充電站可以接取的任務。
+    - **必要條件**: 玩家必須先在該充電站成功簽到。
+    - 任務的生成可能有冷卻時間（例如，24 小時內只能為同一個玩家在同一個站點生成一次）。
+    """
     # 1. Verify check-in
     if not current_user.last_check_in or current_user.last_check_in['station_id'] != station_id:
         raise HTTPException(status_code=403, detail="User must be checked in at this station to get tasks.")
 
     # 2. Check cooldown (假設 PlayerStationTasks 集合存在)
-    last_task_record = await db_provider.db["PlayerStationTasks"].find_one(
+    if db_provider.volticar_db is None:
+        raise HTTPException(status_code=503, detail="Database service not initialized")
+    last_task_record = await db_provider.volticar_db["PlayerStationTasks"].find_one(
         {"user_id": current_user.user_id, "station_id": station_id},
         sort=[("generated_at", -1)]
     )
@@ -109,10 +127,12 @@ async def get_station_tasks(
     }
     new_task = GameTask(**new_task_data)
     
-    await db_provider.db["GameTasks"].insert_one(new_task.dict(by_alias=True)) # 假設 GameTasks 在主 DB
+    if db_provider.volticar_db is None:
+        raise HTTPException(status_code=503, detail="Database service not initialized")
+    await db_provider.volticar_db["GameTasks"].insert_one(new_task.model_dump(by_alias=True))
     
     # Record task generation time for cooldown
-    await db_provider.db["PlayerStationTasks"].insert_one({
+    await db_provider.volticar_db["PlayerStationTasks"].insert_one({
         "user_id": current_user.user_id,
         "station_id": station_id,
         "generated_at": datetime.now()
@@ -122,11 +142,15 @@ async def get_station_tasks(
 
 import random
 
-@router.post("/game-session/{session_id}/trigger-event", response_model=GameEvent)
+@router.post("/game-session/{session_id}/trigger-event", response_model=GameEvent, summary="觸發一個隨機遊戲事件")
 async def trigger_game_event(
     session_id: str,
     current_user: User = Depends(get_current_user)
 ):
+    """
+    在一個正在進行的遊戲會話中觸發一個隨機事件（例如，交通堵塞、爆胎）。
+    - 伺服器會從事件池中隨機選擇一個事件，並將其與當前的遊戲會話關聯。
+    """
     # 1. Define an event pool
     event_pool = [
         {"name": "Traffic Jam", "description": "You are stuck in a heavy traffic jam.", "choices": ["wait", "use_item"]},
@@ -140,24 +164,34 @@ async def trigger_game_event(
     # 3. Create and store the event
     game_event = GameEvent(**selected_event_data)
     
-    await db_provider.db["GameEvents"].insert_one(game_event.dict(by_alias=True))
+    if db_provider.volticar_db is None:
+        raise HTTPException(status_code=503, detail="Database service not initialized")
+    await db_provider.volticar_db["GameEvents"].insert_one(game_event.model_dump(by_alias=True))
 
     # Associate event with the game session
-    await db_provider.db["GameSessions"].update_one(
+    await db_provider.volticar_db["GameSessions"].update_one(
         {"game_session_id": session_id, "user_id": current_user.user_id},
-        {"$push": {"events": game_event.dict(by_alias=True)}}
+        {"$push": {"events": game_event.model_dump(by_alias=True)}}
     )
 
     return game_event
 
-@router.post("/game-session/{session_id}/resolve-event")
+@router.post("/game-session/{session_id}/resolve-event", summary="解決一個遊戲事件")
 async def resolve_game_event(
     session_id: str,
     payload: ResolveEventPayload,
     current_user: User = Depends(get_current_user)
 ):
+    """
+    玩家對一個已觸發的遊戲事件做出選擇，以解決該事件。
+    - **event_id**: 要解決的事件的 ID。
+    - **choice**: 玩家做出的選擇。
+    - 如果選擇是 `use_item`，則必須提供 `item_id`，系統會從玩家倉庫中扣除相應物品。
+    """
     # 1. Find the game session and the specific event
-    game_session = await db_provider.db["GameSessions"].find_one({
+    if db_provider.volticar_db is None:
+        raise HTTPException(status_code=503, detail="Database service not initialized")
+    game_session = await db_provider.volticar_db["GameSessions"].find_one({
         "game_session_id": session_id, 
         "user_id": current_user.user_id,
         "events.event_id": payload.event_id
@@ -176,7 +210,9 @@ async def resolve_game_event(
             raise HTTPException(status_code=400, detail="item_id is required when choice is 'use_item'.")
         
         # Check and deduct item from player's inventory
-        update_result = await db_provider.db["player_items"].update_one(
+        if db_provider.volticar_db is None:
+            raise HTTPException(status_code=503, detail="Database service not initialized")
+        update_result = await db_provider.volticar_db["player_items"].update_one(
             {"user_id": current_user.user_id, "item_id": payload.item_id, "quantity": {"$gt": 0}},
             {"$inc": {"quantity": -1}}
         )
@@ -185,26 +221,40 @@ async def resolve_game_event(
 
     # 4. Update game state based on choice (simplified logic)
     # Mark the event as resolved
-    await db_provider.db["GameSessions"].update_one(
+    if db_provider.volticar_db is None:
+        raise HTTPException(status_code=503, detail="Database service not initialized")
+    await db_provider.volticar_db["GameSessions"].update_one(
         {"game_session_id": session_id, "events.event_id": payload.event_id},
         {"$set": {"events.$.resolved": True, "events.$.resolved_choice": payload.choice}}
     )
 
     return {"message": f"Event {payload.event_id} resolved with choice: {payload.choice}."}
 
-@router.get("/shop/items", response_model=List[ShopItem])
+@router.get("/shop/items", response_model=List[ShopItem], summary="獲取商店中的所有商品")
 async def get_shop_items():
-    items_cursor = db_provider.db["ShopItems"].find()
+    """
+    列出遊戲商店中所有可供購買的商品。
+    """
+    if db_provider.volticar_db is None:
+        raise HTTPException(status_code=503, detail="Database service not initialized")
+    items_cursor = db_provider.volticar_db["ShopItems"].find()
     items = await items_cursor.to_list(length=100) # Limit to 100 items
     return items
 
-@router.post("/shop/purchase")
+@router.post("/shop/purchase", summary="在商店購買商品")
 async def purchase_shop_item(
     payload: PurchasePayload,
     current_user: User = Depends(get_current_user)
 ):
+    """
+    允許玩家使用碳積分在商店中購買商品。
+    - 系統會檢查玩家的碳積分餘額是否足夠。
+    - 購買成功後，會扣除相應的碳積分，並將商品添加到玩家的倉庫中。
+    """
+    if db_provider.volticar_db is None:
+        raise HTTPException(status_code=503, detail="Database service not initialized")
     # 1. Find the item and its price
-    item_to_purchase = await db_provider.db["ShopItems"].find_one({"item_id": payload.item_id})
+    item_to_purchase = await db_provider.volticar_db["ShopItems"].find_one({"item_id": payload.item_id})
     if not item_to_purchase:
         raise HTTPException(status_code=404, detail="Item not found.")
 
@@ -222,7 +272,9 @@ async def purchase_shop_item(
 
     # 4. Add item to player's inventory
     # Using upsert to either add a new item or increment the quantity of an existing one
-    await db_provider.db["PlayerItems"].update_one(
+    if db_provider.volticar_db is None:
+        raise HTTPException(status_code=503, detail="Database service not initialized")
+    await db_provider.volticar_db["PlayerItems"].update_one(
         {"user_id": current_user.user_id, "item_id": payload.item_id},
         {"$inc": {"quantity": payload.quantity}},
         upsert=True
@@ -230,12 +282,18 @@ async def purchase_shop_item(
 
     return {"message": f"Successfully purchased {payload.quantity} of {item_to_purchase['name']}."}
 
-@router.post("/vehicles/{instance_id}/upgrade")
+@router.post("/vehicles/{instance_id}/upgrade", summary="升級玩家的車輛")
 async def upgrade_vehicle(
     instance_id: str,
     payload: VehicleUpgradePayload,
     current_user: User = Depends(get_current_user)
 ):
+    """
+    允許玩家使用碳積分來升級他們擁有的車輛。
+    - **instance_id**: 要升級的車輛實例的 ID。
+    - **upgrade_type**: 要升級的屬性（例如，`tire_durability` 或 `battery_health`）。
+    - 系統會檢查並扣除升級所需的碳積分。
+    """
     # 1. Find the player-owned vehicle
     vehicle = await db_provider.player_owned_vehicles_collection.find_one({
         "instance_id": instance_id,
@@ -278,11 +336,15 @@ async def upgrade_vehicle(
 
     return {"message": f"Vehicle {instance_id} upgraded successfully: {upgrade_type}."}
 
-@router.get("/environment/weather")
+@router.get("/environment/weather", summary="獲取指定座標的當前天氣")
 async def get_environment_weather(
     lat: float,
     lon: float
 ):
+    """
+    （模擬整合）從外部天氣 API (Open-Meteo) 獲取指定經緯度的當前天氣狀況。
+    - 將天氣代碼簡化為 `sunny`, `cloudy`, `rainy` 等狀態。
+    """
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
     async with httpx.AsyncClient() as client:
         try:
