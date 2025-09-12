@@ -51,11 +51,18 @@ CITY_COLLECTIONS = list(CITY_MAPPING.values())
 
 
 # 按城市查詢停車場
-@router.get("/city/{city}", response_model=List[ParkingSummary])
+@router.get("/city/{city}", response_model=List[ParkingSummary], summary="依城市查詢停車場")
 @limiter.limit("10/minute")
 async def get_parkings_by_city(
-    request: Request, city: str, skip: int = 0, limit: int = 100  # 預設每頁100筆
+    request: Request, city: str, skip: int = 0, limit: int = 100
 ):
+    """
+    根據指定的城市名稱，分頁獲取該城市的停車場摘要列表。
+    - **city**: 城市名稱 (例如, "台北市")。
+    - **skip**: 跳過的記錄數，用於分頁。
+    - **limit**: 每頁返回的最大記錄數。
+    - 此端點有速率限制，並使用快取以提高效能。
+    """
     redis = await get_redis_connection(request)
     cache_key_params = {"city": city, "skip": skip, "limit": limit}
     cache_key = create_cache_key("parkings_by_city", **cache_key_params)
@@ -155,9 +162,14 @@ async def get_parkings_by_city(
 
 
 # 根據ID獲取停車場
-@router.get("/id/{parking_id}", response_model=Dict[str, Any])
+@router.get("/id/{parking_id}", response_model=Dict[str, Any], summary="依ID獲取單一停車場的詳細資訊")
 @limiter.limit("30/minute")
 async def get_parking(request: Request, parking_id: str):
+    """
+    根據停車場的唯一 `CarParkID` 或資料庫 `_id`，獲取其完整的詳細資訊。
+    - **parking_id**: 停車場的 ID。
+    - 系統會先在優化的 `AllParkingSpaces` 集合中搜尋，如果找不到，會遍歷所有城市集合進行查找。
+    """
     logger.info(f"查詢停車場ID: {parking_id}")
     logger.info(f"停車場資訊加載中...")
 
@@ -232,7 +244,7 @@ async def get_parking(request: Request, parking_id: str):
 
 
 # 獲取所有停車場 (優化地圖概覽)
-@router.get("/overview", response_model=List[ParkingSummary])
+@router.get("/overview", response_model=List[ParkingSummary], summary="獲取地圖概覽的停車場摘要")
 @limiter.limit("10/minute")
 async def get_all_parkings_overview(
     request: Request,
@@ -243,6 +255,13 @@ async def get_all_parkings_overview(
     skip: int = 0,
     limit: int = 1000,
 ):
+    """
+    為地圖視圖優化設計的端點，高效獲取停車場的摘要資訊。
+    - **min_lat, min_lon, max_lat, max_lon**: (可選) 提供一個地理邊界框，只返回此區域內的停車場。必須同時提供四個參數。
+    - **skip, limit**: 用於分頁。
+    - 如果不提供地理邊界框，將返回所有停車場的摘要資訊 (有分頁限制)。
+    - 此端點有速率限制，並使用快取以提高效能。
+    """
     redis = await get_redis_connection(request)
     cache_key_params = {
         "min_lat": min_lat,

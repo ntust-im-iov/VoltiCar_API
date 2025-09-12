@@ -21,6 +21,9 @@ print(f"正在連接MongoDB: {DATABASE_URL.split('@')[-1]}")
 client: AsyncIOMotorClient = None
 
 
+from bson.codec_options import CodecOptions
+from bson.binary import UuidRepresentation
+
 async def connect_to_mongo():
     global client
     for retry in range(max_retries):
@@ -163,6 +166,8 @@ volticar_db = None
 charge_station_db = None
 parking_data = None
 users_collection = None
+players_collection = None
+player_data_collection = None
 login_records_collection = None
 # vehicles_collection = None # This was ambiguous, replaced by player_owned_vehicles_collection
 # tasks_collection = None # This was ambiguous, replaced by task_definitions_collection
@@ -182,7 +187,7 @@ task_definitions_collection = None  # Added for clarity, points to "TaskDefiniti
 
 
 async def initialize_db_and_collections():
-    global client, volticar_db, charge_station_db, parking_data, users_collection, login_records_collection
+    global client, volticar_db, charge_station_db, parking_data, users_collection, players_collection, player_data_collection, login_records_collection
     # global vehicles_collection, tasks_collection, # Removed old ambiguous ones
     global achievements_collection, rewards_collection, pending_verifications_collection, otp_records_collection
     global player_tasks_collection, vehicle_definitions_collection, player_owned_vehicles_collection
@@ -194,11 +199,14 @@ async def initialize_db_and_collections():
         return
 
     try:
-        volticar_db = client[VOLTICAR_DB]
+        codec_options = CodecOptions(uuid_representation=UuidRepresentation.STANDARD)
+        volticar_db = client.get_database(VOLTICAR_DB, codec_options=codec_options)
         charge_station_db = client[CHARGE_STATION_DB]
         parking_data = client[PARKING_DATA_DB]
 
         users_collection = volticar_db["Users"]
+        players_collection = volticar_db["Players"]
+        player_data_collection = volticar_db["PlayerData"]
         login_records_collection = volticar_db["LoginRecords"]
 
         # Explicitly define collections based on new Pydantic models and mock data script
@@ -292,7 +300,7 @@ async def initialize_db_and_collections():
     except Exception as e:
         print(f"設置數據庫、集合或執行索引/遷移時發生錯誤: {e}")
         # Reset all to None
-        volticar_db = charge_station_db = parking_data = users_collection = (
+        volticar_db = charge_station_db = parking_data = users_collection = players_collection = player_data_collection = (
             login_records_collection
         ) = None
         achievements_collection = rewards_collection = (
@@ -430,13 +438,13 @@ async def connect_and_initialize_db():
             f"DEBUG: connect_and_initialize_db - Entering 'else:' block because client is {client} (type: {type(client)})."
         )
         # Reset all global collection variables to None
-        global volticar_db, charge_station_db, parking_data, users_collection, login_records_collection
+        global volticar_db, charge_station_db, parking_data, users_collection, players_collection, player_data_collection, login_records_collection
         global achievements_collection, rewards_collection, pending_verifications_collection, otp_records_collection
         global player_tasks_collection, vehicle_definitions_collection, player_owned_vehicles_collection
         global item_definitions_collection, player_warehouse_items_collection, destinations_collection
         global game_sessions_collection, task_definitions_collection
 
-        volticar_db = charge_station_db = parking_data = users_collection = (
+        volticar_db = charge_station_db = parking_data = users_collection = players_collection = player_data_collection = (
             login_records_collection
         ) = None
         achievements_collection = rewards_collection = (

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}{% if edit_mode %}編輯用戶{% else %}新增用戶{% endif %} - Volticar 管理面板{% endblock %}
+
+{% block content %}
+<div class="page-header fade-in">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/admin/">儀表板</a></li>
+            <li class="breadcrumb-item"><a href="/admin/users">用戶管理</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{% if edit_mode %}編輯用戶{% else %}新增用戶{% endif %}</li>
+        </ol>
+    </nav>
+    <h1><i class="fas fa-user-edit"></i> {% if edit_mode %}編輯用戶{% else %}新增用戶{% endif %}</h1>
+</div>
+
+<div class="card fade-in">
+    <div class="card-header">
+        <h5>用戶資料</h5>
+    </div>
+    <div class="card-body">
+        {% if error %}
+        <div class="alert alert-danger" role="alert">
+            <i class="fas fa-exclamation-triangle"></i> <strong>錯誤：</strong> {{ error }}
+        </div>
+        {% endif %}
+        
+        <form action="/admin/users/{% if edit_mode %}{{ item_id }}/edit{% else %}add{% endif %}" method="post">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label for="username" class="form-label">用戶名稱</label>
+                    <input type="text" class="form-control" id="username" name="username" value="{{ form_data.username if form_data else '' }}" required>
+                </div>
+                <div class="col-md-6">
+                    <label for="email" class="form-label">電子郵件</label>
+                    <input type="email" class="form-control" id="email" name="email" value="{{ form_data.email if form_data else '' }}" required>
+                </div>
+                <div class="col-md-6">
+                    <label for="phone" class="form-label">手機號碼</label>
+                    <input type="text" class="form-control" id="phone" name="phone" value="{{ form_data.phone if form_data else '' }}">
+                </div>
+                <div class="col-md-6">
+                    <label for="role" class="form-label">角色</label>
+                    <select class="form-select" id="role" name="role">
+                        <option value="user" {% if form_data and form_data.role == 'user' %}selected{% endif %}>User</option>
+                        <option value="admin" {% if form_data and form_data.role == 'admin' %}selected{% endif %}>Admin</option>
+                    </select>
+                </div>
+                <div class="col-12">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" role="switch" id="is_active" name="is_active" {% if form_data is not defined or form_data.is_active %}checked{% endif %}>
+                        <label class="form-check-label" for="is_active">啟用帳號</label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>儲存</button>
+                <a href="/admin/users" class="btn btn-secondary">取消</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

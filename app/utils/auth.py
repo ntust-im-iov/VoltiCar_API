@@ -16,8 +16,11 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24小時
 # 密碼加密上下文
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# OAuth2認證 - 更新 tokenUrl 指向實際的登入端點
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/users/login") # Changed tokenUrl
+# OAuth2認證 - 更新 tokenUrl 指向唯一的登入端點
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="users/login",  # 指向已整合的登入端點
+    scopes={"read": "讀取權限", "write": "寫入權限"}
+)
 
 # 驗證密碼
 def verify_password(plain_password, hashed_password):
@@ -119,31 +122,13 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserModel: # 
     
     # 將字典轉換為 User Pydantic 模型實例
     try:
-        # Pydantic V1 style: User(**user_dict)
-        # Pydantic V2 style: User.model_validate(user_dict)
-        # Assuming Pydantic V1 for now.
-        # The User model uses ObjectIdStr for 'id', which should handle conversion from str(ObjectId).
-        # get_user_by_id already converts _id to str and assigns to "id" if alias is not used,
-        # or directly to "_id" if alias is used.
-        # User model has `id: Optional[ObjectIdStr] = Field(default=None, alias="_id")`
-        # So, if user_dict has "_id": "some_string_oid", it should map to user_model.id
-        
-        # Ensure that the dictionary passed to UserModel has keys that match the model fields
-        # or aliases. get_user_by_id returns a dict where _id is already str(ObjectId).
-        # If 'id' is not in user_dict but '_id' is, Pydantic's alias should handle it.
-        # If user_dict['_id'] is an ObjectId object, ObjectIdStr should handle it.
-        # get_user_by_id returns: user["_id"] = str(user["_id"])
-        # So user_dict will have {"_id": "string_oid", ...}
-        # The User model has `id: Optional[ObjectIdStr] = Field(default=None, alias="_id")`
-        # This means Pydantic will look for "_id" in the input dict and assign its value to `id` field.
-        # The ObjectIdStr validator will then process this string.
-        user_model = UserModel(**user_dict)
+        # 根據 user.py 中的模型定義，它使用了 Pydantic V2 的特性，
+        # 因此我們應該使用 model_validate。
+        user_model = UserModel.model_validate(user_dict)
         return user_model
-    except Exception as e: # Catch Pydantic ValidationError or other conversion errors
-        # Log the detailed error for debugging
-        # import traceback
-        # print(f"Error converting user_dict to UserModel in get_current_user: {e}\n{traceback.format_exc()}")
-        # For the client, just return the standard credentials exception
+    except Exception as e: # 主要捕捉 Pydantic 的 ValidationError
+        # 如果模型驗證失敗，拋出標準的認證異常
+        # （根本原因已在 user.py 的 PyObjectId 驗證器中修復）
         raise credentials_exception
 
 # 備註：原來的 Firebase 驗證邏輯已被移除

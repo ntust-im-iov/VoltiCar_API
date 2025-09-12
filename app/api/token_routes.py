@@ -29,18 +29,16 @@ class TokenSaveRequest(BaseModel):
     user_uuid: str
 
 # 獲取令牌
-@router.post("/get", response_model=Dict[str, Any])
+@router.post("/get", summary="獲取或驗證用戶令牌", response_model=Dict[str, Any])
 async def get_token(
     user_uuid: str = Form(..., description="用戶的 UUID"),
     device: str = Form(..., description="設備標識符"),
     token: Optional[str] = Form(None, description="現有令牌 (可選，用於驗證)")
 ):
     """
-    獲取或驗證用戶令牌 (使用表單欄位)
-
-    - **user_uuid**: 用戶的 UUID
-    - **device**: 設備標識符
-    - **token**: 現有令牌 (可選，用於驗證)
+    此端點用於為特定用戶和設備獲取或驗證一個長期有效的令牌。
+    - 如果提供了 `token` 參數，將驗證其有效性。
+    - 如果未提供 `token` 或現有令牌無效，將生成一個新的 30 天有效期的令牌。
     """
     if db_provider.users_collection is None or db_provider.tokens_collection is None:
         raise HTTPException(status_code=503, detail="令牌或用戶資料庫服務未初始化")
@@ -101,18 +99,16 @@ async def get_token(
     }
 
 # 保存令牌
-@router.post("/save", response_model=Dict[str, Any])
+@router.post("/save", summary="保存用戶令牌", response_model=Dict[str, Any])
 async def save_token(
     user_uuid: str = Form(..., description="用戶的 UUID"),
     device: str = Form(..., description="設備標識符"),
     token: str = Form(..., description="要保存的令牌")
 ):
     """
-    保存用戶令牌 (使用表單欄位)
-
-    - **user_uuid**: 用戶的 UUID
-    - **device**: 設備標識符
-    - **token**: 要保存的令牌
+    保存或更新指定用戶和設備的令牌記錄。
+    - 如果令牌已存在，則更新其設備資訊和過期時間。
+    - 如果令牌不存在，則創建一條新的令牌記錄。
     """
     if db_provider.users_collection is None or db_provider.tokens_collection is None:
         raise HTTPException(status_code=503, detail="令牌或用戶資料庫服務未初始化")
@@ -157,16 +153,17 @@ async def save_token(
     }
 
 # GitHub OAuth 回呼端點
-@router.get("/github/callback", response_model=Dict[str, Any])
+@router.get("/github/callback", summary="GitHub OAuth 授權回呼", response_model=Dict[str, Any])
 async def github_callback(
     code: Optional[str] = Query(None, description="GitHub 提供的臨時授權碼"),
     state: Optional[str] = Query(None, description="用於防止 CSRF 攻擊並傳遞用戶狀態的唯一字串")
 ):
     """
-    GitHub OAuth 回呼端點。
-    接收 GitHub 重新導向時提供的臨時授權碼和狀態。
-    用授權碼交換 access token，獲取 GitHub 用戶名，
-    並將 state、access_token 和 github_username 寫入 user_github_mappings.json。
+    處理 GitHub OAuth 2.0 流程的伺服器端回呼。
+    1.  接收從 GitHub 重新導向來的 `code` 和 `state`。
+    2.  使用 `code` 向 GitHub API 交換 `access_token`。
+    3.  使用 `access_token` 獲取用戶的 GitHub 用戶名。
+    4.  將 `state` 作為鍵，`access_token` 和 `github_username` 作為值，存儲在 `data/user_github_mappings.json` 檔案中，以供後續的 Bot 驗證流程使用。
     """
     if not code:
         raise HTTPException(

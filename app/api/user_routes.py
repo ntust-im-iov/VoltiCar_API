@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Request
+from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import HTMLResponse # Import HTMLResponse
 from datetime import timedelta, datetime
 from typing import Dict, Any, Optional
@@ -34,12 +35,13 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days
 # --- 舊的 /register 路由已移除 ---
 
 # --- 新增：請求 Email 驗證 ---
-@router.post("/request-verification", response_model=Dict[str, Any], status_code=status.HTTP_200_OK)
+@router.post("/request-verification", summary="請求 Email 驗證", response_model=Dict[str, Any], status_code=status.HTTP_200_OK)
 async def request_email_verification(email: EmailStr = Form(...)):
     """
-    請求發送 Email 驗證信 (使用表單欄位)
-
-    - **email**: 要驗證的電子郵件地址
+    為新用戶註冊流程的第一步，請求發送一封包含驗證連結的電子郵件。
+    - **email**: 要驗證的電子郵件地址。
+    - 此端點會檢查 Email 是否已被註冊。
+    - 為了防止濫用，對同一個 Email 的重複請求有 5 分鐘的冷卻時間。
     """
     if db_provider.users_collection is None or db_provider.pending_verifications_collection is None:
         print("錯誤：request_email_verification - 資料庫集合未初始化。")
@@ -107,51 +109,46 @@ async def request_email_verification(email: EmailStr = Form(...)):
     print(f"已向 Email {email} 發送驗證郵件。")
     return {"status": "success", "msg": "驗證郵件已發送，請檢查您的收件匣。"}
 
-# 用戶登入
-@router.post("/login", response_model=Dict[str, Any])
+# 用戶登入 (整合 OAuth2 標準)
+@router.post("/login", summary="用戶登入 (帳號密碼)", response_model=Dict[str, Any])
 async def login_user(
     request: Request,
-    username: Optional[str] = Form(None),
-    email: Optional[EmailStr] = Form(None),
-    password: str = Form(...)
+    form_data: OAuth2PasswordRequestForm = Depends()
 ):
+    """
+    使用帳號 (用戶名或 Email) 和密碼登入，返回 Access Token。
+    此端點遵循 OAuth2 標準，可供 Swagger UI 直接使用。
+
+    - **username**: 用戶名或 Email。
+    - **password**: 密碼。
+    """
     if db_provider.users_collection is None:
-        print("錯誤：login_user - users_collection 未初始化。")
         raise HTTPException(status_code=503, detail="用戶資料庫服務未初始化")
     if db_provider.login_records_collection is None:
-        print("錯誤：login_user - login_records_collection 未初始化。")
         raise HTTPException(status_code=503, detail="登入記錄資料庫服務未初始化")
 
-    query = {}
-    if username:
-        query["username"] = username
-    elif email:
-        query["email"] = email
+    # 嘗試通過用戶名或電子郵件查找用戶
+    identifier = form_data.username
+    user = None
+    if "@" in identifier:
+        user = await db_provider.users_collection.find_one({"email": identifier})
     else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="請提供用戶名或電子郵件"
-        )
-
-    user = await db_provider.users_collection.find_one(query)
-
+        user = await db_provider.users_collection.find_one({"username": identifier})
+    
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="用戶不存在",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
+    
     if user.get("login_type") == "google":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": "GOOGLE_AUTH_REQUIRED",
-                "msg": "此帳號是透過 Google 註冊，請使用 Google 登入"
-            }
+            detail="此帳號是透過 Google 註冊，請使用 Google 登入"
         )
-
-    authenticated = authenticate_user(user, password, password_field="password_hash")
+    
+    authenticated = authenticate_user(user, form_data.password, password_field="password_hash")
     if not authenticated:
         if user.get("password_hash") is None:
              raise HTTPException(
@@ -160,12 +157,13 @@ async def login_user(
                 headers={"WWW-Authenticate": "Bearer"},
             )
         else:
-             raise HTTPException(
+            raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="密碼錯誤",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-
+    
+    # 記錄登入
     client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or \
                   request.headers.get("X-Real-IP", "") or \
                   request.client.host
@@ -174,7 +172,7 @@ async def login_user(
 
     login_record = {
         "user_id": user["user_id"],
-        "login_method": "normal",
+        "login_method": "oauth2_form", # 標記為使用標準表單登入
         "ip_address": client_ip,
         "device_info": user_agent,
         "created_at": now,
@@ -187,12 +185,13 @@ async def login_user(
         data={"sub": user["user_id"]},
         expires_delta=access_token_expires
     )
+    
+    # 返回標準 OAuth2 格式，並額外提供 user_id
     return {
-        "status": "success",
-        "msg": "登入成功",
-        "user_id": user["user_id"],
         "access_token": access_token,
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        "user_id": user["user_id"]
     }
 
 # --- OTP and Binding Endpoints ---
@@ -488,13 +487,19 @@ async def reset_password(
     return {"status": "success", "msg": "密碼已成功重設"}
 
 # --- 新增：完成註冊 ---
-@router.post("/complete-registration", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
+@router.post("/complete-registration", summary="完成新用戶註冊", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
 async def complete_registration(
     email: EmailStr = Form(..., description="已驗證的電子郵件"),
     username: str = Form(..., description="用戶名稱"),
     password: str = Form(..., min_length=8, description="密碼 (至少 8 位)"),
     phone: Optional[str] = Form(None, description="手機號碼 (可選)")
 ):
+    """
+    在 Email 驗證成功後，使用此端點提供用戶名和密碼來完成註冊流程。
+    - **email**: 必須是已通過 `/verify-email` 驗證的地址。
+    - **username**: 遊戲中顯示的唯一名稱。
+    - **password**: 登入密碼，至少 8 位。
+    """
     if db_provider.pending_verifications_collection is None: # Corrected NameError by using db_provider
         print("錯誤：complete_registration - pending_verifications_collection 未初始化。")
         raise HTTPException(status_code=503, detail="驗證資料庫服務未初始化")
@@ -553,15 +558,19 @@ async def complete_registration(
     return {"status": "success", "msg": "用戶註冊成功", "user_id": user_id, "access_token": access_token, "token_type": "bearer"}
 
 # --- Other Endpoints ---
-@router.get("/profile", response_model=Dict[str, Any])
-async def get_user_profile(current_user: User = Depends(get_current_user)): # Changed type hint to User
-    # Access attributes directly from the Pydantic User model instance
+@router.get("/profile", summary="獲取當前用戶的核心個人資料", response_model=Dict[str, Any])
+async def get_user_profile(current_user: User = Depends(get_current_user)):
+    """
+    獲取當前已認證用戶的核心帳號資訊。
+    注意：此端點不包含遊戲相關的資料（如等級、經驗等），請使用 `/api/v1/player/` 端點獲取遊戲資料。
+    """
     user_info = {
         "username": current_user.username,
-        "user_id": current_user.user_id, # This is the custom UUID
+        "user_id": current_user.user_id,
         "email": current_user.email,
         "phone": current_user.phone,
-        # "_id": str(current_user.id) if current_user.id else None # If you also want to return MongoDB _id
+        "role": current_user.role,
+        "created_at": current_user.created_at,
     }
     return {"status": "success", "msg": "獲取用戶資訊成功", "user_info": user_info}
 

@@ -114,9 +114,15 @@ async def call_archive_dev_thread(thread_id: str):
         except Exception as e:
             print(f"An unexpected error occurred while archiving Discord thread: {e}")
 
-@router.post("/webhook")
+@router.post("/webhook", summary="接收 GitHub Webhook 通知")
 async def github_webhook(request: Request):
-    """Endpoint to receive GitHub webhook notifications."""
+    """
+    此端點用於接收來自 GitHub 的 Webhook 事件通知，並根據事件類型觸發相應的 Discord Bot 操作。
+    - **簽名驗證**: 會使用 `GITHUB_WEBHOOK_SECRET` 環境變數來驗證請求的簽名，確保請求來自 GitHub。
+    - **事件處理**:
+        - `issue_comment`: 當 GitHub Issue 有新留言時，會將該留言同步到對應的 Discord 開發討論串中。
+        - `issues` (action: `closed`): 當 GitHub Issue 被關閉時，會自動將對應的 Discord 開發討論串封存。
+    """
 
     if not GITHUB_WEBHOOK_SECRET:
         raise HTTPException(status_code=500, detail="GitHub webhook secret not configured.")
