@@ -21,8 +21,12 @@ class AchievementUpdate(BaseModel):
 # users_collection = volticar_db["Users"]
 
 # 獲取用戶的成就列表
-@router.get("/", response_model=Dict[str, Any])
+@router.get("/", response_model=Dict[str, Any], summary="獲取用戶的成就列表")
 async def get_achievements(user_uuid: str):
+    """
+    獲取指定用戶的全部成就狀態列表，包括已解鎖和未解鎖的。
+    - **user_uuid**: 要查詢的用戶的唯一標識符 (UUID)。
+    """
     if db_provider.users_collection is None or db_provider.achievements_collection is None:
         raise HTTPException(status_code=503, detail="成就或用戶資料庫服務未初始化")
 
@@ -63,18 +67,16 @@ async def get_achievements(user_uuid: str):
     }
 
 # 更新成就進度
-@router.post("/update", response_model=Dict[str, Any])
+@router.post("/update", response_model=Dict[str, Any], summary="更新指定用戶的成就進度")
 async def update_achievement(
     user_uuid: str = Form(..., description="用戶的 UUID"),
     achievement_id: str = Form(..., description="成就的 ID (字串格式)"),
     progress: int = Form(..., description="新的進度值")
 ):
     """
-    更新成就進度 (使用表單欄位)
-
-    - **user_uuid**: 用戶的 UUID
-    - **achievement_id**: 成就的 ID (字串格式)
-    - **progress**: 新的進度值
+    更新特定用戶某個成就的進度。
+    - 如果進度達到或超過目標，會自動將該成就標記為「已解鎖」。
+    - 如果成就是首次解鎖，將會發放定義在該成就中的獎勵（例如，碳積分）。
     """
     # 參數直接從 Form 獲取
     achievement_id_str = achievement_id # Rename to avoid conflict with ObjectId

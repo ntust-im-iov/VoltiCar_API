@@ -12,7 +12,7 @@ class PyObjectId(ObjectId):
         """Pydantic v2 compatible schema generation"""
         return core_schema.with_info_before_validator_function(
             cls.validate,
-            core_schema.str_schema(),
+            core_schema.any_schema(),
             serialization=core_schema.to_string_ser_schema()
         )
 

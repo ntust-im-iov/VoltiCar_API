@@ -30,11 +30,11 @@ class VehicleDynamicInfoUpdate(BaseModel):
     vehicle_name: Optional[str] = None # For updating nickname
 
 
-@router.get("/user/{user_id}", response_model=List[PlayerOwnedVehicle])
+@router.get("/user/{user_id}", response_model=List[PlayerOwnedVehicle], summary="獲取指定用戶的所有車輛")
 async def get_user_vehicles(user_id: str):
     """
-    獲取用戶的所有車輛列表 (PlayerOwnedVehicle instances)
-    - user_id: User.user_id (UUID string)
+    根據用戶 ID，獲取該用戶擁有的所有車輛實例的詳細列表。
+    - **user_id**: 用戶的唯一標識符 (UUID)。
     """
     if db_provider.player_owned_vehicles_collection is None or db_provider.users_collection is None:
         raise HTTPException(status_code=503, detail="車輛或用戶資料庫服務未初始化")
@@ -50,12 +50,12 @@ async def get_user_vehicles(user_id: str):
     return [PlayerOwnedVehicle.model_validate(v, from_attributes=True) for v in vehicles_list]
 
 
-@router.get("/{user_id}/{instance_id}", response_model=PlayerOwnedVehicle) # Changed path param from vehicle_id to instance_id
-async def get_vehicle_info(user_id: str, instance_id: str): # Changed param name
+@router.get("/{user_id}/{instance_id}", response_model=PlayerOwnedVehicle, summary="獲取單一車輛的詳細資訊")
+async def get_vehicle_info(user_id: str, instance_id: str):
     """
-    獲取指定用戶的特定車輛資訊
-    - user_id: User.user_id (UUID string)
-    - instance_id: PlayerOwnedVehicle.instance_id (custom UUID string)
+    獲取指定用戶擁有的某個特定車輛實例的詳細資訊。
+    - **user_id**: 車輛所屬用戶的唯一標識符 (UUID)。
+    - **instance_id**: 車輛實例的唯一標識符 (UUID)。
     """
     if db_provider.player_owned_vehicles_collection is None:
         raise HTTPException(status_code=503, detail="車輛資料庫服務未初始化")
@@ -71,13 +71,17 @@ async def get_vehicle_info(user_id: str, instance_id: str): # Changed param name
 
     return PlayerOwnedVehicle.model_validate(vehicle_doc, from_attributes=True)
 
-@router.post("/", response_model=PlayerOwnedVehicle, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=PlayerOwnedVehicle, status_code=status.HTTP_201_CREATED, summary="為用戶註冊一輛新車")
 async def register_vehicle(
-    # Using a Pydantic model for the request body is cleaner
     payload: PlayerVehicleCreateRequest = Body(...)
 ):
     """
-    註冊新車輛 (PlayerOwnedVehicle instance)
+    為指定用戶創建一個新的車輛實例。
+    這通常在玩家購買或獲得一輛新車時調用。
+    - **user_id**: 要將車輛註冊給哪個用戶。
+    - **vehicle_id**: 所註冊車輛的基礎定義 ID (來自 `VehicleDefinitions` 集合)。
+    - **vehicle_name**: (可選) 給這輛車取的暱稱。
+    - 車輛的 `instance_id` 將由伺服器自動生成並返回。
     """
     if db_provider.player_owned_vehicles_collection is None or \
        db_provider.users_collection is None or \
@@ -126,11 +130,16 @@ async def register_vehicle(
 
 
 # Combined update endpoint for vehicle (name, dynamic info)
-@router.put("/{instance_id}", response_model=PlayerOwnedVehicle) # Changed path param from vehicle_id to instance_id
+@router.put("/{instance_id}", response_model=PlayerOwnedVehicle, summary="更新車輛的動態資訊或暱稱")
 async def update_player_vehicle_info(
-    instance_id: str, # PlayerOwnedVehicle.instance_id (custom UUID)
-    update_payload: VehicleDynamicInfoUpdate = Body(...) # Use Pydantic model for body
+    instance_id: str,
+    update_payload: VehicleDynamicInfoUpdate = Body(...)
 ):
+    """
+    更新指定車輛實例的動態資訊，例如電池電量、健康度、里程數，或修改車輛的暱稱。
+    - **instance_id**: 要更新的車輛實例的唯一 ID。
+    - 在請求主體中，只需提供需要更新的欄位。
+    """
     if db_provider.player_owned_vehicles_collection is None:
         raise HTTPException(status_code=503, detail="車輛資料庫服務未初始化")
 
