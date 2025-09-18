@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}{% if edit_mode %}編輯玩家資料{% else %}新增玩家資料{% endif %} - Volticar 管理面板{% endblock %}
+
+{% block content %}
+<div class="page-header fade-in">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/admin/">儀表板</a></li>
+            <li class="breadcrumb-item"><a href="/admin/player-data">玩家資料</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{% if edit_mode %}編輯玩家資料{% else %}新增玩家資料{% endif %}</li>
+        </ol>
+    </nav>
+    <h1><i class="fas fa-user-edit"></i> {% if edit_mode %}編輯玩家資料{% else %}新增玩家資料{% endif %}</h1>
+</div>
+
+<div class="card fade-in">
+    <div class="card-header">
+        <h5>玩家資料</h5>
+    </div>
+    <div class="card-body">
+        {% if error %}
+        <div class="alert alert-danger" role="alert">
+            <i class="fas fa-exclamation-triangle"></i> <strong>錯誤：</strong> {{ error }}
+        </div>
+        {% endif %}
+        
+        <form action="/admin/player-data/{% if edit_mode %}{{ item_id }}/edit{% else %}add{% endif %}" method="post">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label for="display_name" class="form-label">顯示名稱</label>
+                    <input type="text" class="form-control" id="display_name" name="display_name" value="{{ form_data.display_name if form_data else '' }}" required>
+                </div>
+                <div class="col-md-6">
+                    <label for="level" class="form-label">等級</label>
+                    <input type="number" class="form-control" id="level" name="level" value="{{ form_data.level if form_data else 1 }}" required>
+                </div>
+                <div class="col-md-6">
+                    <label for="experience" class="form-label">經驗值</label>
+                    <input type="number" class="form-control" id="experience" name="experience" value="{{ form_data.experience if form_data else 0 }}" required>
+                </div>
+                <div class="col-md-6">
+                    <label for="currency" class="form-label">貨幣</label>
+                    <input type="number" class="form-control" id="currency" name="currency" value="{{ form_data.currency if form_data else 0 }}" required>
+                </div>
+            </div>
+            
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>儲存</button>
+                <a href="/admin/player-data" class="btn btn-secondary">取消</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

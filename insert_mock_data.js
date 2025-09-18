@@ -1,15 +1,34 @@
-// --- 連接到 Volticar 資料庫 ---
-// use Volticar;
+// Javascript in MongoDB shell doesn't have a built-in uuid library.
+// We can use the UUID() constructor available in the mongo shell.
+// This script is designed to be run directly in the mongo shell.
 
-// 此腳本現在完全基於 game_api_database_design.md 文件來建立模擬資料。
-// 使用 replaceOne 和 upsert:true 來徹底替換文件，確保沒有多餘欄位。
+print("--- Dropping old collections to ensure a clean slate ---");
+db.VehicleDefinitions.drop();
+db.ItemDefinitions.drop();
+db.Destinations.drop();
+db.TaskDefinitions.drop();
+// Also drop the old, wrongly named collections if they exist
+db.vehicles.drop();
+db.items.drop();
+db.destinations.drop();
+db.tasks.drop();
 
-print("--- 開始以 replaceOne 模式徹底同步模擬資料 ---");
+print("--- Starting to insert mock data with proper UUIDs and collection names ---");
 
-// --- 2.2 vehicles 集合 (車輛定義) ---
-db.vehicles.replaceOne(
-  { "_id": ObjectId("68c12072dd4a88deabfa3350") },
-  {
+// --- Define UUIDs first for cross-referencing ---
+const vehicle1_uuid = UUID();
+const vehicle2_uuid = UUID();
+const item1_uuid = UUID();
+const item2_uuid = UUID();
+const dest1_uuid = UUID();
+const dest2_uuid = UUID();
+const task1_uuid = UUID();
+const task2_uuid = UUID();
+
+// --- 2.2 VehicleDefinitions collection ---
+print("Inserting into VehicleDefinitions...");
+db.VehicleDefinitions.insertOne({
+    "vehicle_id": vehicle1_uuid,
     "name": "輕型貨卡 Mark I",
     "type": "pickup_truck",
     "description": "基礎型輕型貨卡，適合新手上路。",
@@ -21,13 +40,10 @@ db.vehicles.replaceOne(
     "required_level_to_unlock": 1,
     "icon_url": "/icons/pickup_m1.png",
     "image_url": "/images/pickup_m1.jpg"
-  },
-  { upsert: true }
-);
+});
 
-db.vehicles.replaceOne(
-  { "_id": ObjectId("68c12072dd4a88deabfa3351") },
-  {
+db.VehicleDefinitions.insertOne({
+    "vehicle_id": vehicle2_uuid,
     "name": "中型廂式貨車",
     "type": "van",
     "description": "容量適中，適合多種城市運輸任務。",
@@ -38,14 +54,13 @@ db.vehicles.replaceOne(
     "required_level_to_unlock": 5,
     "icon_url": "/icons/van_std.png",
     "image_url": "/images/van_std.jpg"
-  },
-  { upsert: true }
-);
+});
+print("VehicleDefinitions inserted: " + db.VehicleDefinitions.countDocuments());
 
-// --- 2.4 items 集合 (貨物定義) ---
-db.items.replaceOne(
-  { "_id": ObjectId("68c12072dd4a88deabfa3352") },
-  {
+// --- 2.4 ItemDefinitions collection ---
+print("Inserting into ItemDefinitions...");
+db.ItemDefinitions.insertOne({
+    "item_id": item1_uuid,
     "name": "鐵礦石",
     "description": "未經加工的基礎工業原料。",
     "category": "原料",
@@ -55,13 +70,10 @@ db.items.replaceOne(
     "is_fragile": false,
     "is_perishable": false,
     "icon_url": "/icons/iron_ore.png"
-  },
-  { upsert: true }
-);
+});
 
-db.items.replaceOne(
-  { "_id": ObjectId("68c12072dd4a88deabfa3353") },
-  {
+db.ItemDefinitions.insertOne({
+    "item_id": item2_uuid,
     "name": "精密電子零件",
     "description": "用於高科技產品製造的敏感電子元件。",
     "category": "電子產品",
@@ -71,14 +83,13 @@ db.items.replaceOne(
     "is_fragile": true,
     "is_perishable": false,
     "icon_url": "/icons/electronics.png"
-  },
-  { upsert: true }
-);
+});
+print("ItemDefinitions inserted: " + db.ItemDefinitions.countDocuments());
 
-// --- 2.8 destinations 集合 (地點定義) ---
-db.destinations.replaceOne(
-  { "_id": ObjectId("68c12072dd4a88deabfa3354") },
-  {
+// --- 2.8 Destinations collection ---
+print("Inserting into Destinations...");
+db.Destinations.insertOne({
+    "destination_id": dest1_uuid,
     "name": "東區倉庫",
     "description": "位於城市東部的大型物流中心。",
     "region": "東區",
@@ -86,13 +97,10 @@ db.destinations.replaceOne(
     "is_unlocked_by_default": true,
     "available_services": ["cargo_pickup", "cargo_dropoff"],
     "icon_url": "/icons/warehouse_east.png"
-  },
-  { upsert: true }
-);
+});
 
-db.destinations.replaceOne(
-  { "_id": ObjectId("68c12072dd4a88deabfa3355") },
-  {
+db.Destinations.insertOne({
+    "destination_id": dest2_uuid,
     "name": "高科技園區",
     "description": "眾多科技公司總部的所在地。",
     "region": "南港區",
@@ -101,21 +109,20 @@ db.destinations.replaceOne(
     "unlock_requirements": { "required_player_level": 5 },
     "available_services": ["cargo_dropoff", "repair_shop"],
     "icon_url": "/icons/tech_park.png"
-  },
-  { upsert: true }
-);
+});
+print("Destinations inserted: " + db.Destinations.countDocuments());
 
-// --- 2.6 tasks 集合 (任務定義) ---
-db.tasks.replaceOne(
-  { "_id": ObjectId("68c12072dd4a88deabfa3356") },
-  {
+// --- 2.6 TaskDefinitions collection ---
+print("Inserting into TaskDefinitions...");
+db.TaskDefinitions.insertOne({
+    "task_id": task1_uuid,
     "title": "新手教學：首次運輸",
     "description": "將10單位鐵礦石運送到東區倉庫，熟悉基本操作。",
     "mode": "story",
     "requirements": {
       "required_player_level": 1,
-      "deliver_items": [{ "item_id": ObjectId("68c12072dd4a88deabfa3352"), "quantity": 10 }],
-      "destination_id": ObjectId("68c12072dd4a88deabfa3354")
+      "deliver_items": [{ "item_id": item1_uuid, "quantity": 10 }],
+      "destination_id": dest1_uuid
     },
     "rewards": {
       "experience_points": 100,
@@ -124,48 +131,29 @@ db.tasks.replaceOne(
     "is_repeatable": false,
     "is_active": true,
     "prerequisite_task_ids": []
-  },
-  { upsert: true }
-);
+});
 
-db.tasks.replaceOne(
-  { "_id": ObjectId("68c12072dd4a88deabfa3357") },
-  {
+db.TaskDefinitions.insertOne({
+    "task_id": task2_uuid,
     "title": "緊急訂單：園區的零件",
     "description": "將50單位精密電子零件緊急運送到高科技園區。",
     "mode": "daily",
     "requirements": {
       "required_player_level": 5,
-      "deliver_items": [{ "item_id": ObjectId("68c12072dd4a88deabfa3353"), "quantity": 50 }],
-      "destination_id": ObjectId("68c12072dd4a88deabfa3355"),
+      "deliver_items": [{ "item_id": item2_uuid, "quantity": 50 }],
+      "destination_id": dest2_uuid,
       "time_limit_seconds": 3600
     },
     "rewards": {
       "experience_points": 350,
       "currency": 2000,
-      "item_rewards": [{ "item_id": ObjectId("68c12072dd4a88deabfa3352"), "quantity": 20 }]
+      "item_rewards": [{ "item_id": item1_uuid, "quantity": 20 }]
     },
     "is_repeatable": true,
     "repeat_cooldown_hours": 24,
     "is_active": true,
-    "prerequisite_task_ids": [ObjectId("68c12072dd4a88deabfa3356")]
-  },
-  { upsert: true }
-);
+    "prerequisite_task_ids": [task1_uuid]
+});
+print("TaskDefinitions inserted: " + db.TaskDefinitions.countDocuments());
 
-// --- 2.3 player_owned_vehicles 集合 ---
-db.player_owned_vehicles.replaceOne(
-  { "_id": ObjectId("68c12072dd4a88deabfa3358") },
-  {
-    "player_id": ObjectId("68c12072dd4a88deabfa3359"), // 假設一個玩家ID
-    "vehicle_definition_id": ObjectId("68c12072dd4a88deabfa3350"),
-    "nickname": "我的第一台貨卡",
-    "purchase_date": new Date("2023-01-15T10:00:00Z"),
-    "last_used_time": new Date("2023-10-01T18:00:00Z"),
-    "current_condition": 0.95,
-    "is_in_active_session": false
-  },
-  { upsert: true }
-);
-
-print("--- 所有模擬資料已使用 replaceOne 模式同步完成 ---");
+print("--- Mock data synchronization complete ---");
