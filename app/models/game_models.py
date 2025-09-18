@@ -37,7 +37,7 @@ COMMON_CONFIG = {
 # --- Vehicle Models ---
 class VehicleDefinition(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    vehicle_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Custom unique vehicle definition ID (UUID string)")
+    vehicle_id: uuid.UUID = Field(default_factory=uuid.uuid4, description="Custom unique vehicle definition ID (UUID)")
     name: str
     type: str
     description: Optional[str] = None
@@ -55,7 +55,7 @@ class PlayerOwnedVehicle(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     instance_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Custom unique ID for this owned vehicle instance (UUID string)")
     user_id: str # Refers to User.user_id (UUID string)
-    vehicle_id: str # Foreign key to VehicleDefinition.vehicle_id (UUID string)
+    vehicle_id: uuid.UUID # Foreign key to VehicleDefinition.vehicle_id (UUID)
     # Renaming nickname back to vehicle_name
     vehicle_name: Optional[str] = None # User's custom name for this vehicle
     
@@ -77,7 +77,7 @@ class PlayerOwnedVehicle(BaseModel):
 # --- Item Models ---
 class ItemDefinition(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    item_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Custom unique item definition ID (UUID string)")
+    item_id: uuid.UUID = Field(default_factory=uuid.uuid4, description="Custom unique item definition ID (UUID)")
     name: str
     # ... (rest of ItemDefinition fields)
     description: Optional[str] = None
@@ -96,29 +96,29 @@ class PlayerWarehouseItem(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     player_warehouse_item_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Custom unique ID for this warehouse item instance (UUID string)")
     user_id: str # Changed from player_id
-    item_id: str 
+    item_id: uuid.UUID 
     quantity: int
     last_updated_at: datetime = Field(default_factory=datetime.now)
     model_config = COMMON_CONFIG
 
 # --- Task Models ---
 class TaskRequirementDeliverItem(BaseModel):
-    item_id: str 
+    item_id: uuid.UUID 
     quantity: int
     model_config = COMMON_CONFIG
 
 class TaskRequirements(BaseModel):
     required_player_level: int = Field(default=1)
     deliver_items: Optional[List[TaskRequirementDeliverItem]] = None
-    pickup_location_id: Optional[str] = None 
-    destination_id: Optional[str] = None 
+    pickup_location_id: Optional[uuid.UUID] = None
+    destination_id: Optional[uuid.UUID] = None 
     required_vehicle_type: Optional[str] = None 
     time_limit_seconds: Optional[int] = None
     min_cargo_value: Optional[int] = None
     model_config = COMMON_CONFIG
 
 class TaskRewardItem(BaseModel):
-    item_id: str 
+    item_id: uuid.UUID 
     quantity: int
     model_config = COMMON_CONFIG
 
@@ -126,18 +126,18 @@ class TaskRewards(BaseModel):
     experience_points: int
     currency: Optional[int] = 0
     item_rewards: Optional[List[TaskRewardItem]] = None
-    unlock_vehicle_ids: Optional[List[str]] = None 
-    unlock_destination_ids: Optional[List[str]] = None
+    unlock_vehicle_ids: Optional[List[uuid.UUID]] = None
+    unlock_destination_ids: Optional[List[uuid.UUID]] = None
     model_config = COMMON_CONFIG
 
 class TaskPickupItem(BaseModel):
-    item_id: str
+    item_id: uuid.UUID
     quantity: int
     model_config = COMMON_CONFIG
 
 class TaskDefinition(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    task_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Custom unique task definition ID (UUID string)")
+    task_id: uuid.UUID = Field(default_factory=uuid.uuid4, description="Custom unique task definition ID (UUID)")
     title: str
     # ... (rest of TaskDefinition fields)
     description: str
@@ -149,12 +149,12 @@ class TaskDefinition(BaseModel):
     repeat_cooldown_hours: Optional[int] = None
     availability_start_date: Optional[datetime] = None
     availability_end_date: Optional[datetime] = None
-    prerequisite_task_ids: Optional[List[str]] = None 
+    prerequisite_task_ids: Optional[List[uuid.UUID]] = None
     is_active: bool = Field(default=True)
     model_config = COMMON_CONFIG
 
 class PlayerTaskProgressItem(BaseModel):
-    item_id: str 
+    item_id: uuid.UUID
     delivered_quantity: int
     model_config = COMMON_CONFIG
 
@@ -165,9 +165,8 @@ class PlayerTaskProgress(BaseModel):
 
 class PlayerTask(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    player_task_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Custom unique ID for this player task instance (UUID string)")
     user_id: str # Changed from player_id
-    task_id: str 
+    task_id: uuid.UUID 
     # ... (rest of PlayerTask fields)
     status: str
     accepted_at: datetime = Field(default_factory=datetime.now)
@@ -187,12 +186,12 @@ class GeoCoordinates(BaseModel):
 
 class DestinationUnlockRequirements(BaseModel):
     required_player_level: Optional[int] = None
-    required_completed_task_id: Optional[str] = None 
+    required_completed_task_id: Optional[uuid.UUID] = None
     model_config = COMMON_CONFIG
 
 class Destination(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    destination_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Custom unique destination ID (UUID string)")
+    destination_id: uuid.UUID = Field(default_factory=uuid.uuid4, description="Custom unique destination ID (UUID)")
     name: str
     # ... (rest of Destination fields)
     description: Optional[str] = None
@@ -213,7 +212,7 @@ class VehicleSnapshot(BaseModel):
     model_config = COMMON_CONFIG
 
 class CargoItemSnapshot(BaseModel):
-    item_id: str 
+    item_id: uuid.UUID 
     name: str
     quantity: int
     weight_per_unit: float
@@ -241,13 +240,13 @@ class GameSession(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     game_session_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Custom unique game session ID (UUID string)")
     user_id: str # Changed from player_id
-    used_vehicle_id: str # This should refer to PlayerOwnedVehicle.instance_id (the custom UUID)
+    used_vehicle_id: str # This should refer to PlayerOwnedVehicle.instance_id (the custom UUID string)
     # ... (rest of GameSession fields)
     vehicle_snapshot: VehicleSnapshot
     cargo_snapshot: List[CargoItemSnapshot]
     total_cargo_weight_at_start: float
     total_cargo_volume_at_start: float
-    destination_id: str 
+    destination_id: uuid.UUID 
     destination_snapshot: DestinationSnapshot
     associated_player_task_ids: Optional[List[str]] = None 
     start_time: datetime = Field(default_factory=datetime.now)
