@@ -62,5 +62,17 @@
     "1417750596974411887": {
         "issue_number": 114,
         "repo": "ntust-im-iov/VoltiCar"
+    },
+    "1419374482098753628": {
+        "issue_number": 31,
+        "repo": "ntust-im-iov/VoltiCar_API"
+    },
+    "1419374558862905506": {
+        "issue_number": 32,
+        "repo": "ntust-im-iov/VoltiCar_API"
+    },
+    "1419374627918188615": {
+        "issue_number": 33,
+        "repo": "ntust-im-iov/VoltiCar_API"
     }
 }
