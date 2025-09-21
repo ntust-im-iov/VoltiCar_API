@@ -392,6 +392,9 @@ function editItem(id) {
         case 'shop-items':
             window.location.href = `/admin/shop-items/${id}/edit`;
             break;
+        case 'player-data':
+            window.location.href = `/admin/player-data/${id}/edit`;
+            break;
         default:
             alert('編輯功能暫未實現: ' + id);
     }

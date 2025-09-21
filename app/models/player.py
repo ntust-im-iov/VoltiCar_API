@@ -24,9 +24,10 @@ class Player(BaseModel):
     level: int = 1
     experience: int = 0
     achievements: List[UUID] = []
+    currency: int = 0
     game_session: GameSession = Field(default_factory=GameSession)
     warehouse: List[PlayerWarehouseItem] = []
     tasks: List[PlayerTask] = []
     
     class Config:
-        collection = "Players"
+        collection = "Player"

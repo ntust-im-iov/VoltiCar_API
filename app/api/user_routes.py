@@ -182,7 +182,7 @@ async def login_user(
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user["user_id"]},
+        data={"sub": str(user["user_id"])},
         expires_delta=access_token_expires
     )
     
@@ -539,7 +539,7 @@ async def complete_registration(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="此手機號已被註冊")
 
     hashed_password = get_password_hash(password)
-    user_id = str(uuid.uuid4())
+    user_id = uuid.uuid4()
     user_dict = {
         "user_id": user_id, "email": email, "username": username,
         "password_hash": hashed_password, "phone": phone if phone else None,
@@ -554,7 +554,7 @@ async def complete_registration(
         print(f"警告：用戶 {user_id} ({email}) 註冊成功，但未能從 pending_verifications 刪除記錄。")
     print(f"用戶 {user_id} ({email}) 已成功完成註冊。")
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(data={"sub": user_id}, expires_delta=access_token_expires)
+    access_token = create_access_token(data={"sub": str(user_id)}, expires_delta=access_token_expires)
     return {"status": "success", "msg": "用戶註冊成功", "user_id": user_id, "access_token": access_token, "token_type": "bearer"}
 
 # --- Other Endpoints ---
@@ -584,11 +584,11 @@ async def update_fcm_token(
         raise HTTPException(status_code=503, detail="用戶資料庫服務未初始化")
     print(f"更新FCM令牌，使用者ID: {user_id}")
     result = await db_provider.users_collection.update_one(
-        {"user_id": user_id},
+        {"user_id": uuid.UUID(user_id)},
         {"$set": {"fcm_token": fcm_token, "device_info": device_info, "token_updated_at": datetime.now()}}
     )
     if result.modified_count == 0:
-        user_exists = await db_provider.users_collection.find_one({"user_id": user_id})
+        user_exists = await db_provider.users_collection.find_one({"user_id": uuid.UUID(user_id)})
         if not user_exists:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="使用者不存在")
     return {"status": "success", "msg": "FCM令牌已更新"}
@@ -635,23 +635,23 @@ async def manage_friends(
 ):
     if db_provider.users_collection is None:
         raise HTTPException(status_code=503, detail="用戶資料庫服務未初始化")
-    user = await db_provider.users_collection.find_one({"user_id": user_id})
+    user = await db_provider.users_collection.find_one({"user_id": uuid.UUID(user_id)})
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用戶不存在")
-    friend = await db_provider.users_collection.find_one({"user_id": friend_id})
+    friend = await db_provider.users_collection.find_one({"user_id": uuid.UUID(friend_id)})
     if not friend:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="好友不存在")
     if action == "add":
         if "friends" in user and friend_id in user["friends"]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="已經是好友")
-        await db_provider.users_collection.update_one({"user_id": user_id}, {"$addToSet": {"friends": friend_id}})
-        await db_provider.users_collection.update_one({"user_id": friend_id}, {"$addToSet": {"friends": user_id}})
+        await db_provider.users_collection.update_one({"user_id": uuid.UUID(user_id)}, {"$addToSet": {"friends": friend_id}})
+        await db_provider.users_collection.update_one({"user_id": uuid.UUID(friend_id)}, {"$addToSet": {"friends": user_id}})
         return {"status": "success", "msg": "添加好友成功"}
     elif action == "remove":
         if "friends" not in user or friend_id not in user["friends"]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="不是好友")
-        await db_provider.users_collection.update_one({"user_id": user_id}, {"$pull": {"friends": friend_id}})
-        await db_provider.users_collection.update_one({"user_id": friend_id}, {"$pull": {"friends": user_id}})
+        await db_provider.users_collection.update_one({"user_id": uuid.UUID(user_id)}, {"$pull": {"friends": friend_id}})
+        await db_provider.users_collection.update_one({"user_id": uuid.UUID(friend_id)}, {"$pull": {"friends": user_id}})
         return {"status": "success", "msg": "移除好友成功"}
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="無效的操作，應為 'add' 或 'remove'")
@@ -662,7 +662,7 @@ async def get_user_tasks(user_id: str): # user_id here is the custom UUID string
     if db_provider.users_collection is None or db_provider.task_definitions_collection is None or db_provider.player_tasks_collection is None:
         raise HTTPException(status_code=503, detail="任務或用戶資料庫服務未初始化")
     
-    user = await db_provider.users_collection.find_one({"user_id": user_id})
+    user = await db_provider.users_collection.find_one({"user_id": uuid.UUID(user_id)})
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用戶不存在")
 
@@ -671,7 +671,7 @@ async def get_user_tasks(user_id: str): # user_id here is the custom UUID string
     # Let's assume it's about tasks the player has accepted (from PlayerTasks)
     # and then enrich with TaskDefinition details.
     # 修正查詢欄位為 user_id
-    player_tasks_cursor = db_provider.player_tasks_collection.find({"user_id": user_id})
+    player_tasks_cursor = db_provider.player_tasks_collection.find({"user_id": uuid.UUID(user_id)})
     player_tasks_list = await player_tasks_cursor.to_list(length=100) # 限制長度
 
     enriched_tasks = []
@@ -708,7 +708,7 @@ async def get_user_tasks(user_id: str): # user_id here is the custom UUID string
 async def get_user_achievements(user_id: str):
     if db_provider.users_collection is None or db_provider.achievements_collection is None:
         raise HTTPException(status_code=503, detail="成就或用戶資料庫服務未初始化")
-    user = await db_provider.users_collection.find_one({"user_id": user_id})
+    user = await db_provider.users_collection.find_one({"user_id": uuid.UUID(user_id)})
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用戶不存在")
     all_achievements_cursor = db_provider.achievements_collection.find({})
@@ -732,7 +732,7 @@ async def redeem_reward(
 ):
     if db_provider.users_collection is None or db_provider.rewards_collection is None:
         raise HTTPException(status_code=503, detail="獎勵或用戶資料庫服務未初始化")
-    user = await db_provider.users_collection.find_one({"user_id": user_id})
+    user = await db_provider.users_collection.find_one({"user_id": uuid.UUID(user_id)})
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用戶不存在")
     if user.get("carbon_credits", 0) < points:
@@ -740,15 +740,15 @@ async def redeem_reward(
     reward = await db_provider.rewards_collection.find_one({"_id": reward_id})
     if not reward:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="獎勵項目不存在")
-    await db_provider.users_collection.update_one({"user_id": user_id}, {"$inc": {"carbon_credits": -points}})
-    await db_provider.users_collection.update_one({"user_id": user_id}, {"$push": {"inventory": reward_id}})
+    await db_provider.users_collection.update_one({"user_id": uuid.UUID(user_id)}, {"$inc": {"carbon_credits": -points}})
+    await db_provider.users_collection.update_one({"user_id": uuid.UUID(user_id)}, {"$push": {"inventory": reward_id}})
     return {"status": "success", "msg": "兌換獎勵成功", "reward_item": reward.get("name", "")}
 
 @router.get("/inventory", response_model=Dict[str, Any])
 async def get_user_inventory(user_id: str):
     if db_provider.users_collection is None or db_provider.rewards_collection is None:
         raise HTTPException(status_code=503, detail="獎勵或用戶資料庫服務未初始化")
-    user = await db_provider.users_collection.find_one({"user_id": user_id})
+    user = await db_provider.users_collection.find_one({"user_id": uuid.UUID(user_id)})
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用戶不存在")
     inventory_ids = user.get("inventory", [])
@@ -785,7 +785,7 @@ async def login_with_google(
         if existing_user:
             await db_provider.users_collection.update_one({"_id": existing_user["_id"]}, {"$set": {"last_login": datetime.now()}})
             access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-            access_token = create_access_token(data={"sub": existing_user["user_id"]}, expires_delta=access_token_expires)
+            access_token = create_access_token(data={"sub": str(existing_user["user_id"])}, expires_delta=access_token_expires)
             return {"status": "success", "msg": "Google登入成功", "user_id": existing_user["user_id"], "access_token": access_token, "token_type": "bearer"}
         else:
             if not email:
@@ -822,10 +822,10 @@ async def login_with_google(
                         }
                     )
                 access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-                access_token = create_access_token(data={"sub": email_user["user_id"]}, expires_delta=access_token_expires)
+                access_token = create_access_token(data={"sub": str(email_user["user_id"])}, expires_delta=access_token_expires)
                 return {"status": "success", "msg": "Google登入成功", "user_id": email_user["user_id"], "access_token": access_token, "token_type": "bearer"}
             else:
-                user_id = str(uuid.uuid4())
+                user_id = uuid.uuid4()
                 username = name or f"user_{uuid.uuid4().hex[:8]}"
                 if await db_provider.users_collection.find_one({"username": username}):
                     username = f"user_{uuid.uuid4().hex[:8]}"
@@ -840,7 +840,7 @@ async def login_with_google(
                 if not result.inserted_id:
                     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="創建用戶失敗")
                 access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-                access_token = create_access_token(data={"sub": user_id}, expires_delta=access_token_expires)
+                access_token = create_access_token(data={"sub": str(user_id)}, expires_delta=access_token_expires)
                 return {"status": "success", "msg": "Google登入成功，已創建新帳號", "user_id": user_id, "access_token": access_token, "token_type": "bearer"}
     except HTTPException:
         raise

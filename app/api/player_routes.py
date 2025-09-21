@@ -8,7 +8,8 @@ from app.models.player import Player
 from app.models.game_models import (
     VehicleDefinition, PlayerOwnedVehicle, ItemDefinition, Destination,
     GameSession as GameSessionModel, PlayerTask, TaskDefinition,
-    GeoCoordinates, VehicleSnapshot, CargoItemSnapshot, DestinationSnapshot
+    GeoCoordinates, VehicleSnapshot, CargoItemSnapshot, DestinationSnapshot,
+    PlayerWarehouseItem as PlayerWarehouseItemModel
 )
 from pydantic import BaseModel
 from app.database import mongodb as db_provider
@@ -24,13 +25,13 @@ async def get_current_player(current_user: User = Depends(get_current_user)) -> 
     if db_provider.players_collection is None:
         raise HTTPException(status_code=503, detail="Player database service not initialized")
     
-    player_doc = await db_provider.players_collection.find_one({"user_id": uuid.UUID(current_user.user_id)})
+    player_doc = await db_provider.players_collection.find_one({"user_id": current_user.user_id})
     if player_doc:
         return Player.model_validate(player_doc, from_attributes=True)
     
     # If no player data exists, create one
     new_player = Player(
-        user_id=uuid.UUID(current_user.user_id),
+        user_id=current_user.user_id,
         display_name=current_user.username,
     )
     await db_provider.players_collection.insert_one(new_player.model_dump(by_alias=True))
@@ -199,14 +200,24 @@ async def list_player_warehouse_items(player: Player = Depends(get_current_playe
     """
     獲取玩家倉庫中所有物品的詳細列表，包括物品定義和現有數量。
     """
-    if db_provider.item_definitions_collection is None:
-        raise HTTPException(status_code=503, detail="物品定義資料庫服務未初始化")
+    if db_provider.item_definitions_collection is None or db_provider.player_warehouse_items_collection is None:
+        raise HTTPException(status_code=503, detail="資料庫服務未初始化")
 
     detailed_items: List[PlayerWarehouseItemDetail] = []
-    if not player.warehouse:
+    
+    # 從 player_warehouse_items_collection 獲取玩家的倉庫物品
+    warehouse_items_cursor = db_provider.player_warehouse_items_collection.find({"user_id": player.user_id})
+    player_warehouse_items_docs = await warehouse_items_cursor.to_list(length=None)
+
+    if not player_warehouse_items_docs:
         return detailed_items
 
-    item_ids_in_warehouse = [item.item_id for item in player.warehouse]
+    # 建立倉庫物品的 map
+    warehouse_items_map: Dict[uuid.UUID, int] = {
+        item['item_id']: item['quantity'] for item in player_warehouse_items_docs
+    }
+    item_ids_in_warehouse = list(warehouse_items_map.keys())
+    
     item_definitions_cursor = db_provider.item_definitions_collection.find(
         {"item_id": {"$in": item_ids_in_warehouse}}
     )
@@ -215,8 +226,8 @@ async def list_player_warehouse_items(player: Player = Depends(get_current_playe
         async for item_def_doc in item_definitions_cursor
     }
 
-    for wh_item in player.warehouse:
-        item_def = item_definitions_map.get(wh_item.item_id)
+    for item_id, quantity in warehouse_items_map.items():
+        item_def = item_definitions_map.get(item_id)
         if item_def:
             detailed_items.append(
                 PlayerWarehouseItemDetail(
@@ -229,10 +240,58 @@ async def list_player_warehouse_items(player: Player = Depends(get_current_playe
                     base_value_per_unit=item_def.base_value_per_unit,
                     is_fragile=item_def.is_fragile,
                     is_perishable=item_def.is_perishable,
-                    quantity_in_warehouse=wh_item.quantity
+                    quantity_in_warehouse=quantity
                 )
             )
     return detailed_items
+
+class AddItemToWarehouseRequest(BaseModel):
+    item_id: uuid.UUID
+    quantity: int
+
+@router.post("/warehouse/items", status_code=status.HTTP_200_OK, summary="添加物品到玩家倉庫")
+async def add_item_to_warehouse(
+    request: AddItemToWarehouseRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    將指定數量的一個物品添加到當前玩家的倉庫中。
+    如果物品已存在，則增加數量；如果不存在，則新增該物品。
+    """
+    if db_provider.player_warehouse_items_collection is None or db_provider.item_definitions_collection is None:
+        raise HTTPException(status_code=503, detail="資料庫服務未初始化")
+
+    # 將字串 item_id 轉換為 UUID
+    if isinstance(request.item_id, uuid.UUID):
+        item_id_uuid = request.item_id
+    else:
+        try:
+            item_id_uuid = uuid.UUID(request.item_id)
+        except ValueError:
+            # 如果傳入的不是有效的 UUID，則從字串生成一個
+            item_id_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, request.item_id)
+
+    # 驗證 item_id 是否存在
+    item_def = await db_provider.item_definitions_collection.find_one({"item_id": item_id_uuid})
+    if not item_def:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"具有 ID 的物品定義不存在: {request.item_id}")
+
+    if request.quantity <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="數量必須為正數")
+
+    # 更新或插入玩家倉庫物品
+    # With the problematic index removed, we only need to query by user_id and item_id.
+    update_result = await db_provider.player_warehouse_items_collection.update_one(
+        {"user_id": current_user.user_id, "item_id": item_id_uuid},
+        {"$inc": {"quantity": request.quantity}},
+        upsert=True
+    )
+
+    if update_result.upserted_id or update_result.modified_count > 0:
+        return {"message": f"成功將 {request.quantity} 個 {item_def['name']} 添加到您的倉庫"}
+    
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="更新倉庫失敗")
+
 
 class CargoItemSelection(BaseModel):
     item_id: uuid.UUID
@@ -559,6 +618,7 @@ async def accept_task(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="任務已被接受且未完成")
 
     new_task = PlayerTask(
+        user_id=player.user_id,
         task_id=request_body.task_id,
         status="accepted",
     )
@@ -579,7 +639,7 @@ async def abandon_task(
     允許玩家放棄一個已經接受但尚未完成的任務。
     任務狀態將被標記為 `abandoned`。
     """
-    task_to_abandon = next((task for task in player.tasks if task.player_task_uuid == player_task_uuid), None)
+    task_to_abandon = next((task for task in player.tasks if task.task_id == player_task_uuid), None)
 
     if not task_to_abandon:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的玩家任務記錄")

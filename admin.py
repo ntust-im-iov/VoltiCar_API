@@ -7,6 +7,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from app.database import mongodb as db_provider
 from app.utils.auth import verify_password, get_password_hash
 import secrets
+from datetime import datetime
 
 # 建立一個 FastAPI 實例來掛載 admin app
 admin_api = FastAPI()
@@ -107,27 +108,6 @@ async def list_player_data(request: Request, admin: str = Depends(get_current_ad
         "collection": "player-data"
     })
 
-@admin_api.get("/player-data", response_class=HTMLResponse)
-async def list_player_data(request: Request, admin: str = Depends(get_current_admin)):
-    """
-    玩家資料列表
-    """
-    if db_provider.player_data_collection is None:
-        raise HTTPException(status_code=503, detail="Database service not available")
-    player_data_cursor = db_provider.player_data_collection.find().limit(100)
-    player_data = await player_data_cursor.to_list(length=100)
-    
-    # 轉換 ObjectId 為字串
-    for data in player_data:
-        data["_id"] = str(data["_id"])
-    
-    return templates.TemplateResponse("list.html", {
-        "request": request,
-        "admin": admin,
-        "title": "玩家資料",
-        "items": player_data,
-        "collection": "player-data"
-    })
 
 @admin_api.get("/vehicles", response_class=HTMLResponse)
 async def list_vehicles(request: Request, admin: str = Depends(get_current_admin)):
@@ -1435,6 +1415,76 @@ async def delete_user(user_id: str, admin: str = Depends(get_current_admin)):
         raise HTTPException(status_code=500, detail=str(e))
 
 # 測試資料路由（僅用於開發測試）
+
+@admin_api.get("/player-data/{player_id}/edit", response_class=HTMLResponse)
+async def edit_player_data_form(player_id: str, request: Request, admin: str = Depends(get_current_admin)):
+    """顯示編輯玩家資料的表單"""
+    try:
+        from bson import ObjectId
+        if db_provider.players_collection is None:
+            raise HTTPException(status_code=503, detail="Database service not available")
+        
+        player = await db_provider.players_collection.find_one({"_id": ObjectId(player_id)})
+        if not player:
+            raise HTTPException(status_code=404, detail="Player not found")
+        
+        player["_id"] = str(player["_id"])
+        
+        return templates.TemplateResponse("add_player_data.html", {
+            "request": request,
+            "admin": admin,
+            "title": "編輯玩家資料",
+            "form_data": player,
+            "edit_mode": True,
+            "item_id": player_id
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@admin_api.post("/player-data/{player_id}/edit", response_class=HTMLResponse)
+async def update_player_data(
+    player_id: str,
+    request: Request,
+    admin: str = Depends(get_current_admin),
+    display_name: str = Form(...),
+    level: int = Form(...),
+    experience: int = Form(...),
+    currency: int = Form(...),
+):
+    """處理編輯玩家資料的表單提交"""
+    try:
+        from bson import ObjectId
+        if db_provider.players_collection is None:
+            raise HTTPException(status_code=503, detail="Database service not available")
+
+        update_data = {
+            "display_name": display_name,
+            "level": level,
+            "experience": experience,
+            "currency": currency,
+            "updated_at": datetime.now(),
+        }
+        
+        result = await db_provider.players_collection.update_one(
+            {"_id": ObjectId(player_id)},
+            {"$set": update_data}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Player not found")
+        
+        return RedirectResponse(url="/admin/player-data", status_code=303)
+    except Exception as e:
+        return templates.TemplateResponse("add_player_data.html", {
+            "request": request,
+            "admin": admin,
+            "title": "編輯玩家資料",
+            "error": str(e),
+            "form_data": update_data,
+            "edit_mode": True,
+            "item_id": player_id
+        })
+
 @admin_api.post("/test/create-sample-data")
 async def create_sample_data(admin: str = Depends(get_current_admin)):
     """創建一些示例資料用於測試"""
@@ -1454,7 +1504,7 @@ async def create_sample_data(admin: str = Depends(get_current_admin)):
                 ]
             },
             {
-                "name": "交通堵塞", 
+                "name": "交通堵塞",
                 "description": "前方發生交通事故造成堵塞",
                 "choices": [
                     {"text": "等待疏通", "effect": "延遲15分鐘"},

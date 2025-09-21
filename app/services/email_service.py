@@ -1,4 +1,5 @@
 import os
+import ssl
 import aiosmtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -54,7 +55,29 @@ async def send_email_async(recipient_email: EmailStr, subject: str, html_content
         # 對於 port 25，我們不需要 TLS 或 STARTTLS
         # 對於 port 25，我們不需要 TLS 或 STARTTLS
         # Revert use_tls to depend on use_ssl (True for port 465)
-        async with aiosmtplib.SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=use_ssl) as smtp:
+
+        # 為了處理開發環境中 host.docker.internal 的 SSL 憑證問題，
+        # 我們建立一個自訂的 SSL context。
+        tls_context = None
+        if use_ssl or use_starttls:
+            # 我們使用系統預設的信任 CA 庫來驗證伺服器憑證，
+            # 但需要停用主機名稱驗證，因為我們是透過 'host.docker.internal' 連接，
+            # 而憑證的 CN (Common Name) 是 'volticar.dynns.com'。
+            print("正在建立自訂 SSL Context 以進行伺服器驗證...")
+            tls_context = ssl.create_default_context()
+            # 停用主機名稱驗證
+            tls_context.check_hostname = False
+            # 仍然要求驗證伺服器憑證，但使用系統的信任庫
+            tls_context.verify_mode = ssl.CERT_REQUIRED
+            print("SSL Context 建立完成：已停用主機名稱檢查，但會驗證憑證鏈。")
+
+
+        async with aiosmtplib.SMTP(
+            hostname=SMTP_HOST, 
+            port=SMTP_PORT, 
+            use_tls=use_ssl, 
+            tls_context=tls_context
+        ) as smtp:
             print(f"正在連接 SMTP 伺服器: {SMTP_HOST}:{SMTP_PORT} (SSL: {use_ssl}, STARTTLS: {use_starttls})")
 
             # 如果需要 STARTTLS (例如 port 587)
