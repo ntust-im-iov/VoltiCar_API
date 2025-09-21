@@ -1379,7 +1379,7 @@ async def update_user(
             "phone": phone,
             "role": role,
             "is_active": is_active,
-            "updated_at": secrets.token_hex(4) # This should be datetime.now()
+            "updated_at": datetime.now()
         }
         
         result = await db_provider.users_collection.update_one(

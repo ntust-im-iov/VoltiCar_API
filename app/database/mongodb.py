@@ -194,6 +194,7 @@ async def initialize_db_and_collections():
     global player_tasks_collection, vehicle_definitions_collection, player_owned_vehicles_collection
     global item_definitions_collection, player_warehouse_items_collection, destinations_collection
     global game_sessions_collection, task_definitions_collection
+    global game_events_collection
 
     if client is None:
         print("MongoDB client is not connected. Aborting initialization.")
@@ -231,6 +232,7 @@ async def initialize_db_and_collections():
         vehicle_definitions_collection = volticar_db["DefinitionVehicles"]
         item_definitions_collection = volticar_db["DefinitionItems"]
         destinations_collection = volticar_db["DefinitionDestinations"]
+        game_events_collection = volticar_db["GameEvents"]
 
         print("所有集合引用已初始化。")
 
@@ -344,6 +346,10 @@ async def initialize_db_and_collections():
         await safely_create_index(game_sessions_collection, "status")
 
         print("新遊戲集合索引創建完成!")
+
+        print("遊戲事件 (GameEvents) 集合索引:")
+        await safely_create_index(game_events_collection, "event_id", unique=True)
+        await safely_create_index(game_events_collection, "is_active")
     except Exception as e:
         print(f"為新遊戲集合創建索引時發生錯誤: {e}")
         pass

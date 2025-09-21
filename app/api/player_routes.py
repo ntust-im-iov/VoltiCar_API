@@ -324,7 +324,7 @@ async def select_cargo_for_session(
     - 系統會校驗貨物總重量和總體積是否超出所選車輛的限制。
     - 這只是一個暫存操作，實際的物品扣減會在遊戲會話開始時進行。
     """
-    if not all([db_provider.item_definitions_collection, db_provider.vehicle_definitions_collection]):
+    if not all([db_provider.item_definitions_collection, db_provider.vehicle_definitions_collection, db_provider.player_warehouse_items_collection]):
         raise HTTPException(status_code=503, detail="一個或多個必要的資料庫服務未初始化")
 
     if not player.game_session.vehicle_id:
@@ -347,8 +347,11 @@ async def select_cargo_for_session(
         doc["item_id"]: ItemDefinition.model_validate(doc, from_attributes=True) async for doc in item_defs_cursor
     }
     
+    # 從 player_warehouse_items_collection 獲取玩家的倉庫物品
+    warehouse_items_cursor = db_provider.player_warehouse_items_collection.find({"user_id": player.user_id, "item_id": {"$in": requested_item_ids}})
+    player_warehouse_items_docs = await warehouse_items_cursor.to_list(length=None)
     warehouse_quantities_map: Dict[uuid.UUID, int] = {
-        item.item_id: item.quantity for item in player.warehouse
+        item['item_id']: item['quantity'] for item in player_warehouse_items_docs
     }
 
     for item_selection in request_body.items:
@@ -386,11 +389,16 @@ async def select_cargo_for_session(
     if current_total_volume > vehicle_def.max_load_volume:
         warnings.append(f"貨物總體積 ({current_total_volume:.2f}) 超出車輛最大容積 ({vehicle_def.max_load_volume:.2f})。")
 
-    player.game_session.cargo = request_body.items
+    # 更新 Player 文件中的 game_session.cargo
+    new_cargo_for_session = [
+        PlayerWarehouseItemModel(item_id=item.item_id, quantity=item.quantity)
+        for item in request_body.items
+    ]
+    player.game_session.cargo = new_cargo_for_session
 
     await db_provider.players_collection.update_one(
         {"user_id": player.user_id},
-        {"$set": {"game_session": player.game_session.model_dump(by_alias=True)}}
+        {"$set": {"game_session.cargo": [item.model_dump() for item in new_cargo_for_session]}}
     )
 
     return SelectCargoResponse(
@@ -599,7 +607,7 @@ async def accept_task(
     - 如果任務不可重複且已完成，則無法再次接受。
     - 如果玩家之前放棄過同一個任務，將會重用該任務記錄而非創建新記錄。
     """
-    if db_provider.task_definitions_collection is None:
+    if db_provider.task_definitions_collection is None or db_provider.player_tasks_collection is None:
         raise HTTPException(status_code=503, detail="資料庫服務未初始化")
 
     task_def_doc = await db_provider.task_definitions_collection.find_one({
@@ -613,22 +621,43 @@ async def accept_task(
     if player.level < task_def.requirements.required_player_level:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"需要等級 {task_def.requirements.required_player_level} 才能接受此任務")
 
-    existing_task = next((task for task in player.tasks if task.task_id == request_body.task_id and task.status in ["accepted", "in_progress"]), None)
-    if existing_task:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="任務已被接受且未完成")
+    # 檢查 PlayerTasks 集合中是否已存在此任務
+    existing_task_doc = await db_provider.player_tasks_collection.find_one({
+        "user_id": player.user_id,
+        "task_id": request_body.task_id
+    })
 
+    if existing_task_doc:
+        existing_task = PlayerTask.model_validate(existing_task_doc, from_attributes=True)
+        if existing_task.status in ["accepted", "in_progress"]:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="任務已被接受且未完成")
+        if existing_task.status == "completed" and not task_def.is_repeatable:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="此任務不可重複")
+        
+        # 如果任務是 'abandoned' 或 'failed'，則重置狀態
+        update_result = await db_provider.player_tasks_collection.update_one(
+            {"_id": existing_task_doc["_id"]},
+            {"$set": {"status": "accepted", "progress": None, "completed_at": None, "failed_at": None, "abandoned_at": None}}
+        )
+        if update_result.modified_count == 1:
+            re_accepted_task_doc = await db_provider.player_tasks_collection.find_one({"_id": existing_task_doc["_id"]})
+            return PlayerTask.model_validate(re_accepted_task_doc, from_attributes=True)
+        else:
+            raise HTTPException(status_code=500, detail="重新接受任務失敗")
+
+    # 如果不存在，則創建新任務
     new_task = PlayerTask(
         user_id=player.user_id,
         task_id=request_body.task_id,
         status="accepted",
     )
-    player.tasks.append(new_task)
-
-    await db_provider.players_collection.update_one(
-        {"user_id": player.user_id},
-        {"$set": {"tasks": [task.model_dump() for task in player.tasks]}}
-    )
-    return new_task
+    
+    insert_result = await db_provider.player_tasks_collection.insert_one(new_task.model_dump(by_alias=True))
+    if not insert_result.inserted_id:
+        raise HTTPException(status_code=500, detail="接受任務失敗")
+        
+    created_task_doc = await db_provider.player_tasks_collection.find_one({"_id": insert_result.inserted_id})
+    return PlayerTask.model_validate(created_task_doc, from_attributes=True)
 
 @router.delete("/tasks/{player_task_uuid}", status_code=status.HTTP_200_OK, summary="玩家放棄一個已接受的任務")
 async def abandon_task(
@@ -639,21 +668,33 @@ async def abandon_task(
     允許玩家放棄一個已經接受但尚未完成的任務。
     任務狀態將被標記為 `abandoned`。
     """
-    task_to_abandon = next((task for task in player.tasks if task.task_id == player_task_uuid), None)
+    if db_provider.player_tasks_collection is None:
+        raise HTTPException(status_code=503, detail="資料庫服務未初始化")
 
-    if not task_to_abandon:
+    # 根據 player_task_uuid 和 user_id 查找任務
+    task_to_abandon_doc = await db_provider.player_tasks_collection.find_one({
+        "player_task_uuid": player_task_uuid,
+        "user_id": player.user_id
+    })
+
+    if not task_to_abandon_doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的玩家任務記錄")
+
+    task_to_abandon = PlayerTask.model_validate(task_to_abandon_doc, from_attributes=True)
 
     if task_to_abandon.status not in ["accepted", "in_progress"]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"任務狀態為 {task_to_abandon.status}，無法放棄")
 
-    task_to_abandon.status = "abandoned"
-
-    await db_provider.players_collection.update_one(
-        {"user_id": player.user_id},
-        {"$set": {"tasks": [task.model_dump() for task in player.tasks]}}
+    # 更新任務狀態為 'abandoned'
+    update_result = await db_provider.player_tasks_collection.update_one(
+        {"_id": task_to_abandon_doc["_id"]},
+        {"$set": {"status": "abandoned", "abandoned_at": datetime.now()}}
     )
-    return {"message": "任務已成功放棄"}
+
+    if update_result.modified_count == 1:
+        return {"message": "任務已成功放棄"}
+    else:
+        raise HTTPException(status_code=500, detail="放棄任務失敗")
 
 @router.get("/tasks", response_model=List[PlayerTask], summary="獲取玩家的任務列表")
 async def list_player_tasks(
@@ -664,6 +705,14 @@ async def list_player_tasks(
     獲取當前玩家的所有任務記錄。
     可以通過 `status_filter` 參數來篩選特定狀態的任務，例如：`accepted`, `completed`, `abandoned`。
     """
+    if db_provider.player_tasks_collection is None:
+        raise HTTPException(status_code=503, detail="資料庫服務未初始化")
+
+    query = {"user_id": player.user_id}
     if status_filter:
-        return [task for task in player.tasks if task.status == status_filter]
-    return player.tasks
+        query["status"] = status_filter
+    
+    tasks_cursor = db_provider.player_tasks_collection.find(query)
+    tasks_list = await tasks_cursor.to_list(length=None)
+    
+    return [PlayerTask.model_validate(task_doc, from_attributes=True) for task_doc in tasks_list]
