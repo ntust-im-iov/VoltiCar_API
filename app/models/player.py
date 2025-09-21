@@ -30,4 +30,4 @@ class Player(BaseModel):
     tasks: List[PlayerTask] = []
     
     class Config:
-        collection = "Players"
+        collection = "Player"

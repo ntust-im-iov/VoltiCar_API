@@ -45,7 +45,7 @@ class CurrentGameSessionSetup(BaseModel):
 # --- User Model ---
 class User(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    user_id: str = Field(default_factory=lambda: str(uuid.uuid4()), unique=True, description="Custom unique user ID (UUID string)")
+    user_id: uuid.UUID = Field(default_factory=uuid.uuid4, unique=True, description="Custom unique user ID (UUID)")
     email: EmailStr
     username: str
     phone: Optional[str] = None
@@ -89,7 +89,7 @@ class User(BaseModel):
 class LoginRecord(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     login_record_id: str = Field(default_factory=lambda: str(uuid.uuid4()), unique=True, description="Custom unique login record ID (UUID string)")
-    user_id: str 
+    user_id: uuid.UUID 
     login_method: str
     ip_address: str
     device_info: str

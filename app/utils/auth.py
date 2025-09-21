@@ -51,8 +51,10 @@ async def get_user_by_username(username: str) -> Dict[str, Any]: # async
         return user
     return None
 
+import uuid
+
 # 根據用戶ID獲取用戶
-async def get_user_by_id(user_id: str) -> Dict[str, Any]: # async
+async def get_user_by_id(user_id: uuid.UUID) -> Dict[str, Any]: # async
     if db_provider.users_collection is None:
         # This function is critical for get_current_user, so an uninitialized DB is a major issue.
         # Raising 503 might be too aggressive if called outside request context,
@@ -107,10 +109,11 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserModel: # 
         # 解碼 JWT 令牌
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         # 從 payload 中獲取用戶標識符 (假設存儲在 'sub' 欄位)
-        user_id: str = payload.get("sub")
-        if user_id is None:
+        user_id_str: str = payload.get("sub")
+        if user_id_str is None:
             raise credentials_exception
-    except JWTError:
+        user_id = uuid.UUID(user_id_str)
+    except (JWTError, ValueError):
         # 如果解碼失敗或令牌無效
         raise credentials_exception
 
