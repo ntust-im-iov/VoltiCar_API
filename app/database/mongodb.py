@@ -171,7 +171,8 @@ player_data_collection = None
 login_records_collection = None
 # vehicles_collection = None # This was ambiguous, replaced by player_owned_vehicles_collection
 # tasks_collection = None # This was ambiguous, replaced by task_definitions_collection
-achievements_collection = None
+player_achievements_collection = None
+achievement_definitions_collection = None
 rewards_collection = None
 pending_verifications_collection = None
 otp_records_collection = None  # Added for OTP records
@@ -183,13 +184,13 @@ item_definitions_collection = None
 player_warehouse_items_collection = None
 destinations_collection = None
 game_sessions_collection = None
-task_definitions_collection = None  # Added for clarity, points to "TaskDefinitions"
+task_definitions_collection = None
 
 
 async def initialize_db_and_collections():
     global client, volticar_db, charge_station_db, parking_data, users_collection, players_collection, player_data_collection, login_records_collection
     # global vehicles_collection, tasks_collection, # Removed old ambiguous ones
-    global achievements_collection, rewards_collection, pending_verifications_collection, otp_records_collection
+    global player_achievements_collection, achievement_definitions_collection, rewards_collection, pending_verifications_collection, otp_records_collection
     global player_tasks_collection, vehicle_definitions_collection, player_owned_vehicles_collection
     global item_definitions_collection, player_warehouse_items_collection, destinations_collection
     global game_sessions_collection, task_definitions_collection
@@ -205,23 +206,18 @@ async def initialize_db_and_collections():
         parking_data = client[PARKING_DATA_DB]
 
         users_collection = volticar_db["Users"]
-        players_collection = volticar_db["Players"]
+        players_collection = volticar_db["Player"]
         player_data_collection = volticar_db["PlayerData"]
         login_records_collection = volticar_db["LoginRecords"]
 
         # Explicitly define collections based on new Pydantic models and mock data script
-        task_definitions_collection = volticar_db[
-            "TaskDefinitions"
-        ]  # Points to "TaskDefinitions"
-        vehicle_definitions_collection = volticar_db["VehicleDefinitions"]
-        item_definitions_collection = volticar_db["ItemDefinitions"]
-        destinations_collection = volticar_db["Destinations"]
 
         player_owned_vehicles_collection = volticar_db[
-            "Vehicles"
-        ]  # Assuming "Vehicles" stores player owned instances
+            "PlayerVehicles"
+        ]  # Renamed from "Vehicles" to match schema
 
-        achievements_collection = volticar_db["Achievements"]
+        player_achievements_collection = volticar_db["PlayerAchievements"]
+        achievement_definitions_collection = volticar_db["DefinitionAchievements"]
         rewards_collection = volticar_db["Rewards"]
         pending_verifications_collection = volticar_db["PendingVerifications"]
         otp_records_collection = volticar_db[
@@ -231,6 +227,10 @@ async def initialize_db_and_collections():
         player_tasks_collection = volticar_db["PlayerTasks"]
         player_warehouse_items_collection = volticar_db["PlayerWarehouseItems"]
         game_sessions_collection = volticar_db["GameSessions"]
+        task_definitions_collection = volticar_db["DefinitionTasks"]
+        vehicle_definitions_collection = volticar_db["DefinitionVehicles"]
+        item_definitions_collection = volticar_db["DefinitionItems"]
+        destinations_collection = volticar_db["DefinitionDestinations"]
 
         print("所有集合引用已初始化。")
 
@@ -266,15 +266,10 @@ async def initialize_db_and_collections():
         # Correcting field name from player_id to user_id to match the model
         await safely_create_index(player_owned_vehicles_collection, "user_id")
 
-        # task_definitions_collection (points to "TaskDefinitions")
-        print("任務定義 (TaskDefinitions) 集合索引:")
-        await safely_create_index(task_definitions_collection, "task_id", unique=True)
-        await safely_create_index(task_definitions_collection, "mode")
-        await safely_create_index(task_definitions_collection, "is_active")
 
         print("成就 (Achievements) 集合索引:")
         await safely_create_index(
-            achievements_collection, "achievement_id", unique=True
+            player_achievements_collection, "achievement_id", unique=True
         )
 
         # Rewards collection might need an update if it refers to item_id (custom UUID)
@@ -303,7 +298,7 @@ async def initialize_db_and_collections():
         volticar_db = charge_station_db = parking_data = users_collection = players_collection = player_data_collection = (
             login_records_collection
         ) = None
-        achievements_collection = rewards_collection = (
+        player_achievements_collection = achievement_definitions_collection = rewards_collection = (
             pending_verifications_collection
         ) = otp_records_collection = None
         player_tasks_collection = vehicle_definitions_collection = (
@@ -327,15 +322,7 @@ async def initialize_db_and_collections():
         await safely_create_index(player_tasks_collection, "status")
         await safely_create_index(player_tasks_collection, "linked_game_session_id")
 
-        print("車輛定義 (VehicleDefinitions) 集合索引:")
-        await safely_create_index(
-            vehicle_definitions_collection, "vehicle_id", unique=True
-        )
-        await safely_create_index(vehicle_definitions_collection, "type")
 
-        print("物品定義 (ItemDefinitions) 集合索引:")
-        await safely_create_index(item_definitions_collection, "item_id", unique=True)
-        await safely_create_index(item_definitions_collection, "category")
 
         print("玩家倉庫 (PlayerWarehouseItems) 集合索引:")
         await player_warehouse_items_collection.create_index(
@@ -347,13 +334,6 @@ async def initialize_db_and_collections():
             player_warehouse_items_collection, "player_warehouse_item_id", unique=True
         )
 
-        print("目的地 (Destinations) 集合索引:")
-        await safely_create_index(
-            destinations_collection, "destination_id", unique=True
-        )
-        await safely_create_index(destinations_collection, "region")
-        await destinations_collection.create_index([("coordinates", "2dsphere")])
-        print("  創建地理空間索引: coordinates_2dsphere")
 
         print("遊戲會話 (GameSessions) 集合索引:")
         await safely_create_index(
@@ -439,7 +419,7 @@ async def connect_and_initialize_db():
         )
         # Reset all global collection variables to None
         global volticar_db, charge_station_db, parking_data, users_collection, players_collection, player_data_collection, login_records_collection
-        global achievements_collection, rewards_collection, pending_verifications_collection, otp_records_collection
+        global player_achievements_collection, achievement_definitions_collection, rewards_collection, pending_verifications_collection, otp_records_collection
         global player_tasks_collection, vehicle_definitions_collection, player_owned_vehicles_collection
         global item_definitions_collection, player_warehouse_items_collection, destinations_collection
         global game_sessions_collection, task_definitions_collection
@@ -447,7 +427,7 @@ async def connect_and_initialize_db():
         volticar_db = charge_station_db = parking_data = users_collection = players_collection = player_data_collection = (
             login_records_collection
         ) = None
-        achievements_collection = rewards_collection = (
+        player_achievements_collection = achievement_definitions_collection = rewards_collection = (
             pending_verifications_collection
         ) = otp_records_collection = None
         player_tasks_collection = vehicle_definitions_collection = (
