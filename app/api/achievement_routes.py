@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, status, Body, Form # Added Form
 from typing import Dict, Any # Removed List
 from datetime import datetime
+import uuid
 from bson import ObjectId # Import ObjectId
 from pydantic import BaseModel # Added BaseModel
 
@@ -27,37 +28,39 @@ async def get_achievements(user_uuid: str):
     獲取指定用戶的全部成就狀態列表，包括已解鎖和未解鎖的。
     - **user_uuid**: 要查詢的用戶的唯一標識符 (UUID)。
     """
-    if db_provider.users_collection is None or db_provider.achievements_collection is None:
+    if db_provider.users_collection is None or db_provider.achievement_definitions_collection is None or db_provider.player_achievements_collection is None:
         raise HTTPException(status_code=503, detail="成就或用戶資料庫服務未初始化")
 
     # 檢查用戶是否存在
-    user = await db_provider.users_collection.find_one({"user_uuid": user_uuid}) # await
+    user = await db_provider.users_collection.find_one({"user_id": uuid.UUID(user_uuid)}) # await
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="用戶不存在"
         )
     
-    # 獲取所有成就
-    all_achievements_cursor = db_provider.achievements_collection.find({}) # find returns a cursor
-    all_achievements = await all_achievements_cursor.to_list(length=None) # await and to_list
+    # 獲取所有成就定義
+    all_achievements_cursor = db_provider.achievement_definitions_collection.find({})
+    all_achievements = await all_achievements_cursor.to_list(length=None)
+    
+    # 獲取玩家已獲得的成就
+    player_achievements_cursor = db_provider.player_achievements_collection.find({"user_id": uuid.UUID(user_uuid)})
+    player_achievements_list = await player_achievements_cursor.to_list(length=None)
+    player_achievements_map = {item['achievement_id']: item for item in player_achievements_list}
+    
     user_achievements = []
     
-    for achievement in all_achievements:
-        # 檢查用戶是否解鎖了此成就
-        unlocked = False
-        progress = 0
-        
-        if "achievements" in user and str(achievement["_id"]) in user["achievements"]:
-            user_achievement = user["achievements"][str(achievement["_id"])]
-            unlocked = user_achievement.get("unlocked", False)
-            progress = user_achievement.get("progress", 0)
+    for achievement_def in all_achievements:
+        achievement_id = achievement_def['achievement_id']
+        unlocked = achievement_id in player_achievements_map
+        completed_at = player_achievements_map.get(achievement_id, {}).get('completed_at')
         
         user_achievements.append({
-            "achievement_id": str(achievement["_id"]),
-            "description": achievement.get("description", ""),
-            "progress": progress,
-            "unlocked": unlocked
+            "achievement_id": achievement_id,
+            "name": achievement_def.get("name", ""),
+            "description": achievement_def.get("description", ""),
+            "unlocked": unlocked,
+            "completed_at": completed_at
         })
     
     return {
@@ -66,78 +69,61 @@ async def get_achievements(user_uuid: str):
         "achievements": user_achievements
     }
 
-# 更新成就進度
-@router.post("/update", response_model=Dict[str, Any], summary="更新指定用戶的成就進度")
-async def update_achievement(
+# 給予玩家成就
+@router.post("/grant", response_model=Dict[str, Any], summary="給予玩家一個成就")
+async def grant_achievement(
     user_uuid: str = Form(..., description="用戶的 UUID"),
-    achievement_id: str = Form(..., description="成就的 ID (字串格式)"),
-    progress: int = Form(..., description="新的進度值")
+    achievement_id: str = Form(..., description="成就的 ID")
 ):
     """
-    更新特定用戶某個成就的進度。
-    - 如果進度達到或超過目標，會自動將該成就標記為「已解鎖」。
-    - 如果成就是首次解鎖，將會發放定義在該成就中的獎勵（例如，碳積分）。
+    直接給予特定用戶一個成就。
+    - 如果玩家已擁有此成就，則不做任何事。
     """
-    # 參數直接從 Form 獲取
-    achievement_id_str = achievement_id # Rename to avoid conflict with ObjectId
-
-    if db_provider.users_collection is None or db_provider.achievements_collection is None:
+    if db_provider.users_collection is None or db_provider.achievement_definitions_collection is None or db_provider.player_achievements_collection is None:
         raise HTTPException(status_code=503, detail="成就或用戶資料庫服務未初始化")
 
     # 檢查用戶是否存在
-    user = await db_provider.users_collection.find_one({"user_uuid": user_uuid}) # await
+    user = await db_provider.users_collection.find_one({"user_id": uuid.UUID(user_uuid)})
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="用戶不存在"
         )
 
-    # 檢查成就是否存在 (使用 ObjectId)
+    # 檢查成就是否存在
     try:
-        achievement_oid = ObjectId(achievement_id_str)
-        achievement = await db_provider.achievements_collection.find_one({"_id": achievement_oid}) # await
-    except Exception: # Handles invalid ObjectId format
-        achievement = None
+        achievement_uuid = uuid.UUID(achievement_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="無效的成就 ID 格式")
 
+    achievement = await db_provider.achievement_definitions_collection.find_one({"achievement_id": achievement_uuid})
     if not achievement:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="成就不存在或ID格式錯誤"
+            detail="成就不存在"
         )
-
-    # 獲取成就完成所需的目標進度
-    target_progress = achievement.get("target_progress", 100)
+        
+    # 檢查玩家是否已擁有此成就
+    existing_achievement = await db_provider.player_achievements_collection.find_one({
+        "user_id": uuid.UUID(user_uuid),
+        "achievement_id": achievement_uuid
+    })
     
-    # 判斷成就是否已解鎖
-    unlocked = progress >= target_progress
+    if existing_achievement:
+        return {
+            "status": "success",
+            "msg": "玩家已擁有此成就"
+        }
 
-    # 更新用戶的成就進度 (使用 achievement_id_str 作為 key)
-    user_achievement_key = f"achievements.{achievement_id_str}"
-    await db_provider.users_collection.update_one( # await
-        {"user_uuid": user_uuid},
-        {"$set": {
-            f"{user_achievement_key}.progress": progress,
-            f"{user_achievement_key}.unlocked": unlocked,
-            f"{user_achievement_key}.last_updated": datetime.now()
-        }}
-    )
-    
-    # 如果成就剛剛解鎖，給予獎勵 (使用 achievement_id_str 作為 key)
-    if unlocked and (
-        "achievements" not in user or
-        achievement_id_str not in user["achievements"] or
-        not user["achievements"][achievement_id_str].get("unlocked", False)
-    ):
-        reward = achievement.get("reward", {})
-        if "carbon_credits" in reward:
-            await db_provider.users_collection.update_one( # await
-                {"user_uuid": user_uuid},
-                {"$inc": {"carbon_credits": reward["carbon_credits"]}}
-            )
+    # 新增成就記錄
+    new_achievement = {
+        "user_id": uuid.UUID(user_uuid),
+        "achievement_id": achievement_uuid,
+        "completed_at": datetime.now()
+    }
+    await db_provider.player_achievements_collection.insert_one(new_achievement)
     
     return {
         "status": "success",
-        "msg": "成就進度更新成功",
-        "progress": progress,
-        "unlocked": unlocked
+        "msg": "成就已成功給予"
     }

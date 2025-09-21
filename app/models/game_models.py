@@ -54,7 +54,7 @@ class VehicleDefinition(BaseModel):
 class PlayerOwnedVehicle(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     instance_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Custom unique ID for this owned vehicle instance (UUID string)")
-    user_id: str # Refers to User.user_id (UUID string)
+    user_id: uuid.UUID # Refers to User.user_id (UUID)
     vehicle_id: uuid.UUID # Foreign key to VehicleDefinition.vehicle_id (UUID)
     # Renaming nickname back to vehicle_name
     vehicle_name: Optional[str] = None # User's custom name for this vehicle
@@ -63,7 +63,7 @@ class PlayerOwnedVehicle(BaseModel):
     battery_level: int = Field(default=100)
     battery_health: int = Field(default=100)
     mileage: int = Field(default=0)
-    lastcharge_mileage: Optional[int] = Field(default=0) # Or None if not charged yet
+    last_recharge_mileage: Optional[int] = Field(default=0) # Or None if not charged yet
     
     purchase_date: datetime = Field(default_factory=datetime.now) # Was in model
     current_condition: float = Field(default=1.0) # Was in model
@@ -95,7 +95,7 @@ class ItemDefinition(BaseModel):
 class PlayerWarehouseItem(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     player_warehouse_item_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Custom unique ID for this warehouse item instance (UUID string)")
-    user_id: str # Changed from player_id
+    user_id: uuid.UUID # Changed from player_id
     item_id: uuid.UUID 
     quantity: int
     last_updated_at: datetime = Field(default_factory=datetime.now)
@@ -165,7 +165,7 @@ class PlayerTaskProgress(BaseModel):
 
 class PlayerTask(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    user_id: str # Changed from player_id
+    user_id: uuid.UUID # Changed from player_id
     task_id: uuid.UUID 
     # ... (rest of PlayerTask fields)
     status: str
@@ -236,10 +236,37 @@ class GameSessionOutcomeSummary(BaseModel):
     penalties: Optional[int] = None
     model_config = COMMON_CONFIG
 
+# --- Models for Game State Endpoint ---
+class GameProgress(BaseModel):
+    percentage: float = 0.0
+    distance_traveled_km: float = 0.0
+    estimated_time_left_seconds: int = 0
+
+class VehicleStatus(BaseModel):
+    current_health: float = 100.0
+    battery_level: float = 100.0
+
+class PendingEventChoice(BaseModel):
+    choice_id: str
+    text: str
+
+class PendingEvent(BaseModel):
+    event_id: str
+    name: str
+    description: str
+    choices: List[PendingEventChoice]
+
+class GameStateResponse(BaseModel):
+    session_id: str
+    status: str
+    progress: GameProgress
+    vehicle_status: VehicleStatus
+    pending_event: Optional[PendingEvent] = None
+ 
 class GameSession(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     game_session_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Custom unique game session ID (UUID string)")
-    user_id: str # Changed from player_id
+    user_id: uuid.UUID # Changed from player_id
     used_vehicle_id: str # This should refer to PlayerOwnedVehicle.instance_id (the custom UUID string)
     # ... (rest of GameSession fields)
     vehicle_snapshot: VehicleSnapshot
@@ -253,8 +280,23 @@ class GameSession(BaseModel):
     end_time: Optional[datetime] = None
     status: str
     outcome_summary: Optional[GameSessionOutcomeSummary] = None
+    
+    # Fields for state management
+    total_distance_km: float = Field(default=0.0)
+    estimated_duration_seconds: int = Field(default=0)
+    progress: GameProgress = Field(default_factory=GameProgress)
+    vehicle_status: VehicleStatus = Field(default_factory=VehicleStatus)
+    pending_event: Optional[PendingEvent] = None
+
     last_updated_at: datetime = Field(default_factory=datetime.now)
     model_config = COMMON_CONFIG
+
+class LoadCargoItem(BaseModel):
+    item_id: uuid.UUID
+    quantity: int
+
+class LoadCargoPayload(BaseModel):
+    items: List[LoadCargoItem]
 
 # --- New Game Loop Models ---
 
@@ -290,18 +332,65 @@ class GameEvent(BaseModel):
 
 class ResolveEventPayload(BaseModel):
     event_id: str
-    choice: str
-    item_id: Optional[str] = None
+    choice_id: str
+    item_id: Optional[uuid.UUID] = None
+
+class EventOutcome(BaseModel):
+    time_penalty_seconds: int = 0
+    distance_increase_km: float = 0.0
+    item_consumed: Optional[uuid.UUID] = None
+    message: str
+
+class ResolveEventResponse(BaseModel):
+    message: str
+    outcome: EventOutcome
+    next_state: GameStateResponse
+
+# --- Models for Game Completion Endpoint ---
+class RewardSummary(BaseModel):
+    experience: int
+    currency: int
+
+class PenaltySummary(BaseModel):
+    damage_penalty: int
+
+class TotalEarnedSummary(BaseModel):
+    experience: int
+    currency: int
+
+class OutcomeSummary(BaseModel):
+    distance_traveled_km: float
+    time_taken_seconds: int
+    cargo_damage_percentage: float
+    base_reward: RewardSummary
+    bonus: RewardSummary
+    penalties: PenaltySummary
+    total_earned: TotalEarnedSummary
+
+class PlayerUpdate(BaseModel):
+    level: int
+    experience: int
+    currency_balance: int
+
+class GameCompletionResponse(BaseModel):
+    message: str
+    outcome_summary: OutcomeSummary
+    player_update: PlayerUpdate
 
 class ShopItem(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    item_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    item_id: uuid.UUID = Field(default_factory=uuid.uuid4)
     name: str
     description: str
     price: int
     category: str
     icon_url: Optional[str] = None
-    model_config = COMMON_CONFIG
+    model_config = {
+        **COMMON_CONFIG,
+        "json_encoders": {
+            uuid.UUID: lambda u: str(u)
+        }
+    }
 
 class PurchasePayload(BaseModel):
     item_id: str

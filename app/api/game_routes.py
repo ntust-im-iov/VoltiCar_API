@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Body
 from typing import List
 from datetime import datetime
 import httpx
+import uuid
 from geopy.distance import geodesic
 from app.models.user import User
 from app.utils.auth import get_current_user
@@ -14,6 +15,22 @@ from app.models.game_models import (
     ShopItem,
     PurchasePayload,
     VehicleUpgradePayload,
+    LoadCargoPayload,
+    CargoItemSnapshot,
+    GameStateResponse,
+    GameProgress,
+    VehicleStatus,
+    PendingEvent,
+    PendingEventChoice,
+    GameSession as GameSessionModel,
+    ResolveEventResponse,
+    EventOutcome,
+    GameCompletionResponse,
+    OutcomeSummary,
+    RewardSummary,
+    PenaltySummary,
+    TotalEarnedSummary,
+    PlayerUpdate,
 )
 from app.database.mongodb import get_db
 from app.database import mongodb as db_provider # 引入 db_provider
@@ -176,59 +193,98 @@ async def trigger_game_event(
 
     return game_event
 
-@router.post("/game-session/{session_id}/resolve-event", summary="解決一個遊戲事件")
+@router.post("/game-session/{session_id}/resolve-event", response_model=ResolveEventResponse, summary="解決一個遊戲事件")
 async def resolve_game_event(
     session_id: str,
     payload: ResolveEventPayload,
     current_user: User = Depends(get_current_user)
 ):
     """
-    玩家對一個已觸發的遊戲事件做出選擇，以解決該事件。
-    - **event_id**: 要解決的事件的 ID。
-    - **choice**: 玩家做出的選擇。
-    - 如果選擇是 `use_item`，則必須提供 `item_id`，系統會從玩家倉庫中扣除相應物品。
+    玩家對一個待處理的事件做出選擇，並根據選擇計算後果。
     """
-    # 1. Find the game session and the specific event
-    if db_provider.volticar_db is None:
-        raise HTTPException(status_code=503, detail="Database service not initialized")
-    game_session = await db_provider.volticar_db["GameSessions"].find_one({
-        "game_session_id": session_id, 
-        "user_id": current_user.user_id,
-        "events.event_id": payload.event_id
+    # 1. 獲取遊戲會話
+    session_doc = await db_provider.game_sessions_collection.find_one({
+        "game_session_id": session_id,
+        "user_id": current_user.user_id
     })
-    if not game_session:
-        raise HTTPException(status_code=404, detail="Game session or event not found.")
+    if not session_doc:
+        raise HTTPException(status_code=404, detail="Game session not found.")
+    
+    game_session = GameSessionModel.model_validate(session_doc)
 
-    # 2. Validate the choice
-    event = next((e for e in game_session.get('events', []) if e['event_id'] == payload.event_id), None)
-    if not event or payload.choice not in event['choices']:
+    # 2. 驗證事件和選擇
+    if game_session.status != "event_pending" or not game_session.pending_event:
+        raise HTTPException(status_code=400, detail="No pending event to resolve.")
+    
+    if game_session.pending_event.event_id != payload.event_id:
+        raise HTTPException(status_code=400, detail="Event ID mismatch.")
+
+    valid_choice_ids = [c.choice_id for c in game_session.pending_event.choices]
+    if payload.choice_id not in valid_choice_ids:
         raise HTTPException(status_code=400, detail="Invalid choice for this event.")
 
-    # 3. Handle item usage
-    if payload.choice == "use_item":
+    # 3. 處理後果
+    outcome_message = ""
+    time_penalty = 0
+    distance_increase = 0.0
+    item_consumed = None
+
+    # 簡易後果邏輯
+    if "wait" in payload.choice_id:
+        time_penalty = random.randint(30, 120)
+        outcome_message = f"你選擇了耐心等待，多花了 {time_penalty} 秒。"
+    elif "detour" in payload.choice_id:
+        time_penalty = random.randint(10, 60)
+        distance_increase = round(random.uniform(0.5, 3.0), 2)
+        outcome_message = f"你選擇了繞路，多走了 {distance_increase} 公里，多花了 {time_penalty} 秒。"
+    elif "use_item" in payload.choice_id:
         if not payload.item_id:
-            raise HTTPException(status_code=400, detail="item_id is required when choice is 'use_item'.")
+            raise HTTPException(status_code=400, detail="item_id is required for this choice.")
         
-        # Check and deduct item from player's inventory
-        if db_provider.volticar_db is None:
-            raise HTTPException(status_code=503, detail="Database service not initialized")
-        update_result = await db_provider.volticar_db["player_items"].update_one(
+        # 檢查並扣除物品
+        update_result = await db_provider.player_warehouse_items_collection.update_one(
             {"user_id": current_user.user_id, "item_id": payload.item_id, "quantity": {"$gt": 0}},
             {"$inc": {"quantity": -1}}
         )
         if update_result.modified_count == 0:
-            raise HTTPException(status_code=400, detail="Item not found in inventory or quantity is zero.")
+            raise HTTPException(status_code=400, detail="Item not found or not enough quantity.")
+        
+        item_consumed = payload.item_id
+        outcome_message = "你使用了一個道具，成功化解了危機！"
 
-    # 4. Update game state based on choice (simplified logic)
-    # Mark the event as resolved
-    if db_provider.volticar_db is None:
-        raise HTTPException(status_code=503, detail="Database service not initialized")
-    await db_provider.volticar_db["GameSessions"].update_one(
-        {"game_session_id": session_id, "events.event_id": payload.event_id},
-        {"$set": {"events.$.resolved": True, "events.$.resolved_choice": payload.choice}}
+    # 4. 更新遊戲會話狀態
+    game_session.estimated_duration_seconds += time_penalty
+    game_session.total_distance_km += distance_increase
+    game_session.status = "in_progress"
+    game_session.pending_event = None
+    game_session.last_updated_at = datetime.now()
+
+    await db_provider.game_sessions_collection.update_one(
+        {"game_session_id": session_id},
+        {"$set": game_session.model_dump(exclude={"id"})}
     )
 
-    return {"message": f"Event {payload.event_id} resolved with choice: {payload.choice}."}
+    # 5. 準備並返回回應
+    event_outcome = EventOutcome(
+        time_penalty_seconds=time_penalty,
+        distance_increase_km=distance_increase,
+        item_consumed=item_consumed,
+        message=outcome_message
+    )
+    
+    next_state = GameStateResponse(
+        session_id=game_session.game_session_id,
+        status=game_session.status,
+        progress=game_session.progress,
+        vehicle_status=game_session.vehicle_status,
+        pending_event=game_session.pending_event
+    )
+
+    return ResolveEventResponse(
+        message=outcome_message,
+        outcome=event_outcome,
+        next_state=next_state
+    )
 
 @router.get("/shop/items", response_model=List[ShopItem], summary="獲取商店中的所有商品")
 async def get_shop_items():
@@ -368,3 +424,303 @@ async def get_environment_weather(
             raise HTTPException(status_code=e.response.status_code, detail="Error fetching weather data.")
         except Exception:
             raise HTTPException(status_code=500, detail="Could not fetch weather data.")
+
+@router.post("/game-session/{session_id}/load-cargo", summary="將物品從倉庫裝載到車輛")
+async def load_cargo_to_vehicle(
+    session_id: str,
+    payload: LoadCargoPayload,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    將玩家倉庫中的物品裝載到進行中的遊戲會話的車輛上。
+    - 驗證遊戲會話是否存在且屬於當前玩家。
+    - 驗證玩家倉庫中是否有足夠的物品。
+    - 檢查裝載後是否會超過車輛的載重和容積限制。
+    - 從倉庫扣除物品並將其添加到遊戲會話的 `cargo_snapshot` 中。
+    """
+    # 1. 獲取遊戲會話
+    game_session = await db_provider.game_sessions_collection.find_one({
+        "game_session_id": session_id,
+        "user_id": current_user.user_id
+    })
+    if not game_session:
+        raise HTTPException(status_code=404, detail="Game session not found.")
+    if game_session['status'] != 'in_progress':
+        raise HTTPException(status_code=400, detail="Cargo can only be loaded in 'in_progress' sessions.")
+
+    # 2. 獲取車輛定義以檢查限制
+    vehicle_instance = await db_provider.player_owned_vehicles_collection.find_one({
+        "instance_id": game_session["used_vehicle_id"],
+        "user_id": current_user.user_id
+    })
+    if not vehicle_instance:
+        raise HTTPException(status_code=404, detail="Vehicle used in session not found.")
+        
+    vehicle_definition = await db_provider.vehicle_definitions_collection.find_one({
+        "vehicle_id": vehicle_instance["vehicle_id"]
+    })
+    if not vehicle_definition:
+        raise HTTPException(status_code=404, detail="Vehicle definition not found.")
+
+    max_weight = vehicle_definition['max_load_weight']
+    max_volume = vehicle_definition['max_load_volume']
+
+    # 3. 計算當前貨物總重和總體積
+    current_weight = sum(item['quantity'] * item['weight_per_unit'] for item in game_session.get('cargo_snapshot', []))
+    current_volume = sum(item['quantity'] * item['volume_per_unit'] for item in game_session.get('cargo_snapshot', []))
+
+    items_to_add_snapshot = []
+    
+    for item_to_load in payload.items:
+        # 4. 獲取物品定義
+        item_def = await db_provider.item_definitions_collection.find_one({"item_id": item_to_load.item_id})
+        if not item_def:
+            raise HTTPException(status_code=404, detail=f"Item with ID {item_to_load.item_id} not found.")
+
+        # 5. 檢查倉庫庫存
+        warehouse_item = await db_provider.player_warehouse_items_collection.find_one({
+            "user_id": current_user.user_id,
+            "item_id": item_to_load.item_id
+        })
+        if not warehouse_item or warehouse_item['quantity'] < item_to_load.quantity:
+            raise HTTPException(status_code=400, detail=f"Not enough quantity for item {item_def['name']}. Warehouse has {warehouse_item.get('quantity', 0)}.")
+
+        # 6. 檢查負重和容積
+        additional_weight = item_to_load.quantity * item_def['weight_per_unit']
+        additional_volume = item_to_load.quantity * item_def['volume_per_unit']
+
+        if current_weight + additional_weight > max_weight:
+            raise HTTPException(status_code=400, detail=f"Loading item {item_def['name']} exceeds vehicle's max weight.")
+        if current_volume + additional_volume > max_volume:
+            raise HTTPException(status_code=400, detail=f"Loading item {item_def['name']} exceeds vehicle's max volume.")
+
+        current_weight += additional_weight
+        current_volume += additional_volume
+
+        # 7. 從倉庫扣除物品
+        new_quantity = warehouse_item['quantity'] - item_to_load.quantity
+        if new_quantity > 0:
+            await db_provider.player_warehouse_items_collection.update_one(
+                {"_id": warehouse_item['_id']},
+                {"$set": {"quantity": new_quantity}}
+            )
+        else:
+            await db_provider.player_warehouse_items_collection.delete_one({"_id": warehouse_item['_id']})
+        
+        # 準備要加入 cargo_snapshot 的物品
+        snapshot = CargoItemSnapshot(
+            item_id=item_def['item_id'],
+            name=item_def['name'],
+            quantity=item_to_load.quantity,
+            weight_per_unit=item_def['weight_per_unit'],
+            volume_per_unit=item_def['volume_per_unit'],
+            base_value_per_unit=item_def['base_value_per_unit']
+        )
+        items_to_add_snapshot.append(snapshot.model_dump())
+
+    # 8. 更新遊戲會話的 cargo_snapshot
+    if items_to_add_snapshot:
+        await db_provider.game_sessions_collection.update_one(
+            {"game_session_id": session_id},
+            {"$push": {"cargo_snapshot": {"$each": items_to_add_snapshot}}}
+        )
+
+    updated_session = await db_provider.game_sessions_collection.find_one({"game_session_id": session_id})
+
+    return {
+        "message": "Cargo loaded successfully.",
+        "game_session_id": session_id,
+        "updated_cargo": updated_session.get('cargo_snapshot', [])
+    }
+
+@router.get("/game-session/{session_id}/state", response_model=GameStateResponse, summary="獲取遊戲會話的即時狀態")
+async def get_game_session_state(
+    session_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    獲取當前遊戲會話的即時狀態，用於前端輪詢以驅動遊戲進程。
+    - 如果沒有待處理事件，則推進遊戲進度。
+    - 有一定機率觸發新的隨機事件。
+    """
+    # 1. 獲取遊戲會話
+    session_doc = await db_provider.game_sessions_collection.find_one({
+        "game_session_id": session_id,
+        "user_id": current_user.user_id
+    })
+    if not session_doc:
+        raise HTTPException(status_code=404, detail="Game session not found.")
+
+    game_session = GameSessionModel.model_validate(session_doc)
+
+    # 如果會話已完成或已有待處理事件，直接返回當前狀態
+    if game_session.status in ["completed", "event_pending"]:
+        return GameStateResponse(
+            session_id=game_session.game_session_id,
+            status=game_session.status,
+            progress=game_session.progress,
+            vehicle_status=game_session.vehicle_status,
+            pending_event=game_session.pending_event
+        )
+
+    # --- 遊戲進度推進 ---
+    time_now = datetime.now()
+    time_since_last_update = (time_now - game_session.last_updated_at).total_seconds()
+    
+    # 假設速度為 60 km/h (1 km/min or 1/60 km/s)
+    speed_km_per_second = 60 / 3600
+    distance_increment = time_since_last_update * speed_km_per_second
+    
+    game_session.progress.distance_traveled_km += distance_increment
+    
+    if game_session.total_distance_km > 0:
+        game_session.progress.percentage = min(
+            (game_session.progress.distance_traveled_km / game_session.total_distance_km) * 100,
+            100
+        )
+    
+    time_left = game_session.estimated_duration_seconds - (time_now - game_session.start_time).total_seconds()
+    game_session.progress.estimated_time_left_seconds = max(0, int(time_left))
+
+    # --- 車輛狀態更新 (簡易模擬) ---
+    game_session.vehicle_status.battery_level = max(0, game_session.vehicle_status.battery_level - (time_since_last_update * 0.01))
+
+    # --- 隨機事件觸發 ---
+    EVENT_TRIGGER_PROBABILITY = 0.15 # 15% 機率
+    if random.random() < EVENT_TRIGGER_PROBABILITY:
+        all_events = await db_provider.volticar_db["GameEvents"].find().to_list(length=100)
+        if all_events:
+            chosen_event_doc = random.choice(all_events)
+            
+            # 假設 choices 在 DB 中是像 ["wait", "detour"] 的格式
+            # 我們需要轉換成 API 需要的格式
+            choices_for_api = []
+            for choice_text in chosen_event_doc.get("choices", []):
+                 choices_for_api.append(PendingEventChoice(choice_id=choice_text.lower().replace(" ", "_"), text=choice_text))
+
+            pending_event = PendingEvent(
+                event_id=chosen_event_doc["event_id"],
+                name=chosen_event_doc["name"],
+                description=chosen_event_doc["description"],
+                choices=choices_for_api
+            )
+            game_session.pending_event = pending_event
+            game_session.status = "event_pending"
+
+    # --- 檢查遊戲是否完成 ---
+    if game_session.progress.percentage >= 100:
+        game_session.status = "completed"
+        game_session.end_time = time_now
+
+    game_session.last_updated_at = time_now
+
+    # --- 更新資料庫 ---
+    await db_provider.game_sessions_collection.update_one(
+        {"game_session_id": session_id},
+        {"$set": game_session.model_dump(exclude={"id"})}
+    )
+
+    return GameStateResponse(
+        session_id=game_session.game_session_id,
+        status=game_session.status,
+        progress=game_session.progress,
+        vehicle_status=game_session.vehicle_status,
+        pending_event=game_session.pending_event
+    )
+
+@router.post("/game-session/{session_id}/complete", response_model=GameCompletionResponse, summary="結束遊戲會話並進行結算")
+async def complete_game_session(
+    session_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    結束一個遊戲會話，計算最終獎勵與懲罰，並更新玩家資料。
+    """
+    # 1. 獲取遊戲會話
+    session_doc = await db_provider.game_sessions_collection.find_one({
+        "game_session_id": session_id,
+        "user_id": current_user.user_id
+    })
+    if not session_doc:
+        raise HTTPException(status_code=404, detail="Game session not found.")
+    
+    game_session = GameSessionModel.model_validate(session_doc)
+
+    # 2. 驗證遊戲是否真的可以完成
+    if game_session.status != "completed":
+         # 允許手動完成，但進度必須是100%
+        if game_session.progress.percentage < 100:
+            raise HTTPException(status_code=400, detail=f"Game session is not yet completed. Progress: {game_session.progress.percentage:.2f}%")
+        game_session.status = "completed"
+        if not game_session.end_time:
+            game_session.end_time = datetime.now()
+
+    # 3. 計算結算結果
+    time_taken = int((game_session.end_time - game_session.start_time).total_seconds())
+    
+    # 簡易獎勵計算邏輯
+    base_exp = int(game_session.total_distance_km * 10)
+    base_currency = int(game_session.total_distance_km * 50)
+    
+    time_bonus_exp = max(0, int((game_session.estimated_duration_seconds - time_taken) * 0.1))
+    
+    # 假設車輛健康度直接影響貨物損壞
+    cargo_damage = round(100 - game_session.vehicle_status.current_health, 2)
+    no_damage_bonus_currency = 100 if cargo_damage <= 1 else 0
+    
+    damage_penalty_currency = int(base_currency * (cargo_damage / 100))
+
+    total_exp = base_exp + time_bonus_exp
+    total_currency = base_currency + no_damage_bonus_currency - damage_penalty_currency
+
+    # 4. 更新玩家資料
+    player_doc = await db_provider.users_collection.find_one({"user_id": current_user.user_id})
+    if not player_doc:
+        raise HTTPException(status_code=404, detail="Player data not found for the user.")
+
+    # 假設玩家等級/經驗等資訊存在 users collection
+    current_level = player_doc.get("level", 1)
+    current_exp = player_doc.get("experience", 0)
+    current_currency = player_doc.get("currency_balance", 0)
+
+    new_exp = current_exp + total_exp
+    new_currency = current_currency + total_currency
+    
+    # 簡易升級邏輯: 每 1000 經驗升一級
+    exp_for_next_level = 1000
+    while new_exp >= exp_for_next_level:
+        new_exp -= exp_for_next_level
+        current_level += 1
+        exp_for_next_level = int(exp_for_next_level * 1.5) # 升級所需經驗增加
+
+    await db_provider.users_collection.update_one(
+        {"user_id": current_user.user_id},
+        {"$set": {
+            "level": current_level,
+            "experience": new_exp,
+            "currency_balance": new_currency
+        }}
+    )
+    
+    # 5. 準備回應
+    outcome = OutcomeSummary(
+        distance_traveled_km=round(game_session.progress.distance_traveled_km, 2),
+        time_taken_seconds=time_taken,
+        cargo_damage_percentage=cargo_damage,
+        base_reward=RewardSummary(experience=base_exp, currency=base_currency),
+        bonus=RewardSummary(experience=time_bonus_exp, currency=no_damage_bonus_currency),
+        penalties=PenaltySummary(damage_penalty=damage_penalty_currency),
+        total_earned=TotalEarnedSummary(experience=total_exp, currency=total_currency)
+    )
+    
+    player_update = PlayerUpdate(
+        level=current_level,
+        experience=new_exp,
+        currency_balance=new_currency
+    )
+
+    return GameCompletionResponse(
+        message="任務完成！成功將電力運送到目的地。",
+        outcome_summary=outcome,
+        player_update=player_update
+    )

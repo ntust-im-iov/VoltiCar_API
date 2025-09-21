@@ -25,13 +25,13 @@ async def get_current_player(current_user: User = Depends(get_current_user)) -> 
     if db_provider.players_collection is None:
         raise HTTPException(status_code=503, detail="Player database service not initialized")
     
-    player_doc = await db_provider.players_collection.find_one({"user_id": uuid.UUID(current_user.user_id)})
+    player_doc = await db_provider.players_collection.find_one({"user_id": current_user.user_id})
     if player_doc:
         return Player.model_validate(player_doc, from_attributes=True)
     
     # If no player data exists, create one
     new_player = Player(
-        user_id=uuid.UUID(current_user.user_id),
+        user_id=current_user.user_id,
         display_name=current_user.username,
     )
     await db_provider.players_collection.insert_one(new_player.model_dump(by_alias=True))
@@ -282,7 +282,7 @@ async def add_item_to_warehouse(
     # 更新或插入玩家倉庫物品
     # With the problematic index removed, we only need to query by user_id and item_id.
     update_result = await db_provider.player_warehouse_items_collection.update_one(
-        {"user_id": uuid.UUID(current_user.user_id), "item_id": item_id_uuid},
+        {"user_id": current_user.user_id, "item_id": item_id_uuid},
         {"$inc": {"quantity": request.quantity}},
         upsert=True
     )
@@ -618,7 +618,7 @@ async def accept_task(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="任務已被接受且未完成")
 
     new_task = PlayerTask(
-        user_id=str(player.user_id),
+        user_id=player.user_id,
         task_id=request_body.task_id,
         status="accepted",
     )
