@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"},{"v":{"$numberInt":"2"},"key":{"Location":{"$numberInt":"1"}},"name":"location_2dsphere","background":false,"sparse":false}],"uuid":"d43c85b4be1d450c8f0e685fe1af557c","collectionName":"MiaoliCounty","type":"collection"}

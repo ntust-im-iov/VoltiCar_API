@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"},{"v":{"$numberInt":"2"},"key":{"vehicle_id":{"$numberInt":"1"}},"name":"vehicle_id_1","unique":true,"sparse":true},{"v":{"$numberInt":"2"},"key":{"type":{"$numberInt":"1"}},"name":"type_1"}],"uuid":"7e43753dd9ce44a980efd69d4b9e67a8","collectionName":"DefinitionVehicles","type":"collection"}

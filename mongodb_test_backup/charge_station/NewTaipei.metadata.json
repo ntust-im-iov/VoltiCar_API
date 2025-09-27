@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"},{"v":{"$numberInt":"2"},"key":{"Location":{"$numberInt":"1"}},"name":"location_2dsphere","background":false,"sparse":false}],"uuid":"dfcc3c1a402c4b9f85b661992281f676","collectionName":"NewTaipei","type":"collection"}
