@@ -652,7 +652,10 @@ async def accept_task(
         status="accepted",
     )
     
-    insert_result = await db_provider.player_tasks_collection.insert_one(new_task.model_dump(by_alias=True))
+    task_dict = new_task.model_dump(by_alias=True)
+    if task_dict.get("_id") is None:
+        task_dict.pop("_id")
+    insert_result = await db_provider.player_tasks_collection.insert_one(task_dict)
     if not insert_result.inserted_id:
         raise HTTPException(status_code=500, detail="接受任務失敗")
         

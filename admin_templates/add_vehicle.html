@@ -31,7 +31,8 @@
                 <h5><i class="fas fa-plus-circle"></i> 車輛定義資訊</h5>
             </div>
             <div class="card-body">
-                <form method="post" id="vehicleForm" novalidate>
+                <form method="post" id="vehicleForm" novalidate 
+                      action="{% if edit_mode %}/admin/vehicles/{{ item_id }}/edit{% else %}/admin/vehicles/add{% endif %}">
                     <div class="row g-3">
                         <!-- 基本資訊 -->
                         <div class="col-12">
@@ -172,7 +173,7 @@
                         <div class="col-12 mt-4 pt-3 border-top">
                             <div class="d-flex gap-2">
                                 <button type="submit" class="btn btn-primary">
-                                    <i class="fas fa-save"></i> 儲存車輛定義
+                                    <i class="fas fa-save"></i> {% if edit_mode %}更新車輛定義{% else %}儲存車輛定義{% endif %}
                                 </button>
                                 <a href="/admin/vehicles" class="btn btn-secondary">
                                     <i class="fas fa-arrow-left"></i> 返回列表
