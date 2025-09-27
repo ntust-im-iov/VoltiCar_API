@@ -31,8 +31,7 @@
                 <h5><i class="fas fa-plus-circle"></i> 物品定義資訊</h5>
             </div>
             <div class="card-body">
-                <form method="post" id="itemForm" novalidate 
-                      action="{% if edit_mode %}/admin/items/{{ item_id }}/edit{% else %}/admin/items/add{% endif %}">
+                <form method="post" id="itemForm" novalidate>
                     <div class="row g-3">
                         <!-- 基本資訊 -->
                         <div class="col-12">
@@ -179,7 +178,7 @@
                         <div class="col-12 mt-4 pt-3 border-top">
                             <div class="d-flex gap-2">
                                 <button type="submit" class="btn btn-success">
-                                    <i class="fas fa-save"></i> {% if edit_mode %}更新物品定義{% else %}儲存物品定義{% endif %}
+                                    <i class="fas fa-save"></i> 儲存物品定義
                                 </button>
                                 <a href="/admin/items" class="btn btn-secondary">
                                     <i class="fas fa-arrow-left"></i> 返回列表

@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"},{"v":{"$numberInt":"2"},"key":{"Location":{"$numberInt":"1"}},"name":"location_2dsphere","background":false,"sparse":false}],"uuid":"31b524cec28a4864a5beda7177e64591","collectionName":"ChiayiCounty","type":"collection"}
