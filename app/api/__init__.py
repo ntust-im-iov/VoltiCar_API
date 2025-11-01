@@ -93,3 +93,12 @@ try:
 except Exception as e:
     print(f"✗ 載入玩家API路由時出錯: {str(e)}")
     traceback.print_exc(file=sys.stdout)
+
+try:
+    from app.api.can_routes import router as can_router
+
+    api_router.include_router(can_router)
+    print("✓ CAN充電數據API路由已載入")
+except Exception as e:
+    print(f"✗ 載入 CAN API 路由時出錯: {str(e)}")
+    traceback.print_exc(file=sys.stdout)

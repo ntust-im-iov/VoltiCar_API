@@ -18,12 +18,14 @@ services:
       - LC_ALL=C.UTF-8
       - REDIS_HOST=redis # 新增 Redis 主機環境變數
       - REDIS_PORT=6379
+      - CAN_DATA_DIR=/app/can_data # CAN 數據檔案路徑
       # 移除 SSL 環境變數，Nginx 將處理 SSL
     volumes:
       - ./app:/app/app
       - ./requirements.txt:/app/requirements.txt
       - ./logs:/app/logs # 保留日誌映射
       - ./data:/app/data # 將 data 目錄映射到主機，用於存放 user_github_mappings.json 等數據檔案
+      - ./can_data:/app/can_data:ro # CAN 數據檔案 (唯讀)
       - C:\Certbot:/etc/certs # 保留憑證映射，以防應用程式內部需要讀取
     extra_hosts: # 保留 extra_hosts
       - "volticar.dynns.com:192.168.1.102"
