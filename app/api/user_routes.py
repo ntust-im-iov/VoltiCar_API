@@ -704,25 +704,7 @@ async def get_user_tasks(user_id: str): # user_id here is the custom UUID string
     # 修正返回的變數名稱
     return {"status": "success", "msg": "獲取任務列表成功", "tasks": enriched_tasks}
 
-@router.get("/achievements", response_model=Dict[str, Any])
-async def get_user_achievements(user_id: str):
-    if db_provider.users_collection is None or db_provider.achievements_collection is None:
-        raise HTTPException(status_code=503, detail="成就或用戶資料庫服務未初始化")
-    user = await db_provider.users_collection.find_one({"user_id": uuid.UUID(user_id)})
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用戶不存在")
-    all_achievements_cursor = db_provider.achievements_collection.find({})
-    all_achievements = await all_achievements_cursor.to_list(length=None)
-    user_achievements = []
-    for achievement in all_achievements:
-        unlocked = False
-        progress = 0
-        if "achievements" in user and str(achievement["_id"]) in user["achievements"]:
-            user_achievement = user["achievements"][str(achievement["_id"])]
-            unlocked = user_achievement.get("unlocked", False)
-            progress = user_achievement.get("progress", 0)
-        user_achievements.append({"achievement_id": str(achievement["_id"]), "description": achievement.get("description", ""), "progress": progress, "unlocked": unlocked})
-    return {"status": "success", "msg": "獲取成就列表成功", "achievements": user_achievements}
+# @router.get("/achievements") 已移除，請使用 app/api/achievement_routes.py 中的 /api/achievements 端點
 
 @router.post("/redeem-reward", response_model=Dict[str, Any])
 async def redeem_reward(
