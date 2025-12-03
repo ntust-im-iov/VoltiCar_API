@@ -507,7 +507,7 @@ async def save_carbon_reduction(
         users_collection = db["Users"]
         
         result = await users_collection.update_one(
-            {"user_id": str(current_user.user_id)},
+            {"user_id": current_user.user_id},
             {"$inc": {"total_carbon_reduction_kg": carbon_kg}}
         )
         
@@ -518,7 +518,7 @@ async def save_carbon_reduction(
             )
         
         # 讀取更新後的值
-        updated_user = await users_collection.find_one({"user_id": str(current_user.user_id)})
+        updated_user = await users_collection.find_one({"user_id": current_user.user_id})
         new_total = updated_user.get("total_carbon_reduction_kg", 0.0)
         
         return CarbonReductionResponse(total_carbon_reduction_kg=new_total)
@@ -571,7 +571,7 @@ async def save_carbon_points(
         users_collection = db["Users"]
         
         result = await users_collection.update_one(
-            {"user_id": str(current_user.user_id)},
+            {"user_id": current_user.user_id},
             {"$inc": {"carbon_reward_points": points_earned}}
         )
         
@@ -582,7 +582,7 @@ async def save_carbon_points(
             )
         
         # 讀取更新後的值
-        updated_user = await users_collection.find_one({"user_id": str(current_user.user_id)})
+        updated_user = await users_collection.find_one({"user_id": current_user.user_id})
         new_total = updated_user.get("carbon_reward_points", 0.0)
         
         return CarbonPointsResponse(carbon_reward_points=new_total)
