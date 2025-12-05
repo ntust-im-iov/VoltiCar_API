@@ -1,0 +1,7 @@
+{
+    "example_user_id": {
+        "access_token": "example_github_access_token",
+        "github_username": "example_username",
+        "timestamp": "2024-01-01T00:00:00.000000"
+    }
+}

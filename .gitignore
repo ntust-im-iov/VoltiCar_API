@@ -27,3 +27,5 @@ temp_volticar/
 .idea/
 .vscode/
 *.sublime-* 
+# Data files
+data/user_github_mappings.json
