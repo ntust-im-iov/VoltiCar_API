@@ -62,8 +62,11 @@ async def send_email_async(recipient_email: EmailStr, subject: str, html_content
         if use_ssl or use_starttls:
             # 我們使用系統預設的信任 CA 庫來驗證伺服器憑證，
             # 但需要停用主機名稱驗證，因為我們是透過 'host.docker.internal' 連接，
-            # 而憑證的 CN (Common Name) 是 'volticar.dynns.com'。
-            print("正在建立自訂 SSL Context 以進行伺服器驗證...")
+            # 而憑證的 CN (Common Name) 是我們設定的 SSL_DOMAIN。
+            ssl_domain = os.getenv("SSL_DOMAIN")
+            if not ssl_domain:
+                 print("警告: 未設定 SSL_DOMAIN 環境變數，SSL 驗證可能會失敗。")
+            print(f"正在建立自訂 SSL Context 以進行伺服器驗證 (CN: {ssl_domain})...")
             tls_context = ssl.create_default_context()
             # 停用主機名稱驗證
             tls_context.check_hostname = False

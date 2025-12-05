@@ -23,8 +23,6 @@ from app.models.user import PyObjectId # Or from app.models.game_models
 
 # 設置環境變量，確保在程序開始時就有正確的設定
 os.environ["PYTHONIOENCODING"] = "utf-8"
-if "DATABASE_URL" not in os.environ:
-    os.environ["DATABASE_URL"] = "mongodb://Volticar:REMOVED_PASSWORD@59.126.6.46:27017/?authSource=admin&ssl=false"
 
 # --- 設定日誌 ---
 log_directory = "logs"
@@ -84,8 +82,6 @@ app = FastAPI(
 
 # 設置環境變量，確保在程序開始時就有正確的設定
 os.environ["PYTHONIOENCODING"] = "utf-8"
-if "DATABASE_URL" not in os.environ:
-    os.environ["DATABASE_URL"] = "mongodb://Volticar:REMOVED_PASSWORD@59.126.6.46:27017/?authSource=admin&ssl=false"
 
 # --- 設定日誌 ---
 log_directory = "logs"
@@ -350,10 +346,14 @@ if __name__ == "__main__":
             if hasattr(handler, 'flush'):
                 handler.flush()
 
-        ssl_keyfile = os.environ.get("SSL_KEYFILE", "C:\\Certbot\\live\\volticar.dynns.com\\privkey.pem")
-        ssl_certfile = os.environ.get("SSL_CERTFILE", "C:\\Certbot\\live\\volticar.dynns.com\\fullchain.pem")
+        ssl_keyfile = os.environ.get("SSL_KEYFILE")
+        ssl_certfile = os.environ.get("SSL_CERTFILE")
 
-        uvicorn.run(app, host=host, port=port, ssl_keyfile=ssl_keyfile, ssl_certfile=ssl_certfile)
+        if not ssl_keyfile or not ssl_certfile:
+             logger.warning("SSL_KEYFILE or SSL_CERTFILE not set in environment variables. Starting without SSL.")
+             uvicorn.run(app, host=host, port=port)
+        else:
+             uvicorn.run(app, host=host, port=port, ssl_keyfile=ssl_keyfile, ssl_certfile=ssl_certfile)
     except Exception as e:
         print(f"啟動服務時發生錯誤: {str(e)}")
         traceback.print_exc()

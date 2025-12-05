@@ -5,11 +5,11 @@ services:
     build: .
     container_name: volticar-api
     # 移除 ports 映射，流量將通過 Nginx
+    env_file:
+      - .env
     environment:
-      - DATABASE_URL=mongodb://Volticar:REMOVED_PASSWORD@59.126.6.46:27017/?authSource=admin
       - VOLTICAR_DB=Volticar
       - CHARGE_STATION_DB=charge_station
-      - SECRET_KEY=REMOVED_SECRET_KEY
       - API_ENV=development
       - API_HOST=0.0.0.0
       - API_PORT=8000 # 更新為內部埠
@@ -28,7 +28,7 @@ services:
       - ./can_data:/app/can_data:ro # CAN 數據檔案 (唯讀)
       - C:\Certbot:/etc/certs # 保留憑證映射，以防應用程式內部需要讀取
     extra_hosts: # 保留 extra_hosts
-      - "volticar.dynns.com:192.168.1.102"
+      - "${SSL_DOMAIN}:${EXTRA_HOST_IP}"
     # --- 新增埠映射，僅供主機 Nginx 訪問 ---
     ports:
       - "127.0.0.1:8000:8000" # 將容器 8000 埠映射到主機 localhost 的 8000 埠

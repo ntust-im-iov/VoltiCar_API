@@ -1578,12 +1578,13 @@ async def startup():
         admin_count = await admin_collection.count_documents({})
         if admin_count == 0:
             # Create default admin user
+            default_admin_password = os.getenv("DEFAULT_ADMIN_PASSWORD", "Volticar123")
             default_admin = {
                 "username": "Volticar",
-                "password": get_password_hash("REMOVED_PASSWORD")
+                "password": get_password_hash(default_admin_password)
             }
             await admin_collection.insert_one(default_admin)
-            print("已創建預設管理員用戶: Volticar/REMOVED_PASSWORD")
+            print(f"已創建預設管理員用戶: Volticar/{default_admin_password}")
     except Exception as e:
         print(f"Admin startup error: {e}")
         

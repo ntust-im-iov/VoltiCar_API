@@ -5,10 +5,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import ASCENDING
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "mongodb://Volticar:REMOVED_PASSWORD@59.126.6.46:27017/?authSource=admin&ssl=false",
-)
+DATABASE_URL = os.getenv("DATABASE_URL")
 VOLTICAR_DB = os.getenv("VOLTICAR_DB", "Volticar")
 CHARGE_STATION_DB = os.getenv("CHARGE_STATION_DB", "charge_station")
 PARKING_DATA_DB = os.getenv("PARKING_DATA_DB", "parking_data")

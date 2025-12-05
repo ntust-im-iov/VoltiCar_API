@@ -1,11 +1,15 @@
 import asyncio
 import uuid
+import os
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # !!! IMPORTANT !!!
 # Please verify your database connection details before running this script.
-DATABASE_URL = "mongodb://Volticar:REMOVED_PASSWORD@59.126.6.46:27017/?authSource=admin&ssl=false"
+DATABASE_URL = os.getenv("DATABASE_URL")
 DB_NAME = "Volticar"
 
 # A consistent namespace for generating UUIDs from string IDs
