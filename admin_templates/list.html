@@ -152,7 +152,7 @@
                     {% for item in items %}
                     <tr>
                         {% if collection == 'users' %}
-                        <td><code>{{ item.user_id[:8] if item.user_id else item._id[:8] }}</code></td>
+                        <td><code>{{ item.user_id|string|truncate(8, True, '') if item.user_id else item._id[:8] }}</code></td>
                         <td>{{ item.username or '未設定' }}</td>
                         <td>{{ item.email or '未設定' }}</td>
                         <td><span class="badge bg-primary">{{ item.level or 1 }}</span></td>

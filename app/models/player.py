@@ -23,11 +23,9 @@ class Player(BaseModel):
     display_name: str
     level: int = 1
     experience: int = 0
-    achievements: List[UUID] = []
     currency: int = 0
     game_session: GameSession = Field(default_factory=GameSession)
-    warehouse: List[PlayerWarehouseItem] = []
-    tasks: List[PlayerTask] = []
+    active_game_session_id: Optional[UUID] = None  # 目前進行中的遊戲會話ID，遊戲開始時設為 game_session_id，結束時清空
     
     class Config:
         collection = "Player"

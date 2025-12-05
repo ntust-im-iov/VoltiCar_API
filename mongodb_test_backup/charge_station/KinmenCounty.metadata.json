@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"},{"v":{"$numberInt":"2"},"key":{"Location":{"$numberInt":"1"}},"name":"location_2dsphere","background":false,"sparse":false}],"uuid":"795f0610af714d65ad8432e1b65cabf6","collectionName":"KinmenCounty","type":"collection"}

@@ -56,6 +56,11 @@ class User(BaseModel):
     
     currency_balance: int = Field(default=0)
     carbon_points: int = Field(default=0)
+    
+    # CAN 充電數據相關欄位
+    total_carbon_reduction_kg: float = Field(default=0.0, description="累計減碳量 (公斤)")
+    carbon_reward_points: float = Field(default=0.0, description="減碳點數 (float)")
+    
     current_game_session_setup: Optional[CurrentGameSessionSetup] = None
     active_game_session_id: Optional[str] = None
     last_check_in: Optional[Dict[str, Any]] = None

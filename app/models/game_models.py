@@ -263,30 +263,63 @@ class GameStateResponse(BaseModel):
     vehicle_status: VehicleStatus
     pending_event: Optional[PendingEvent] = None
  
+class Effect(BaseModel):
+    time_penalty_seconds: Optional[int] = 0
+    health_damage: Optional[float] = 0.0
+    distance_increase_km: Optional[float] = 0.0
+
+class GameEventChoice(BaseModel):
+    choice_id: str
+    text: str
+    base_effects: Optional[Effect] = None
+
+class GameEvent(BaseModel):
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    description: str
+    choices: List[GameEventChoice]
+    trigger_conditions: Optional[Dict[str, Any]] = None
+    is_active: bool = True
+    model_config = COMMON_CONFIG
+
+class PendingEvent(BaseModel):
+    event_id: str
+    event_name: str
+    description: str
+    choices: List[GameEventChoice]
+    triggered_at: Optional[datetime] = None
+
+class GameSessionProgress(BaseModel):
+    total_distance_km: float = 0.0
+    distance_traveled_km: float = 0.0
+    start_time: datetime = Field(default_factory=datetime.now)
+    last_updated_at: datetime = Field(default_factory=datetime.now)
+    estimated_total_seconds: int = 0
+
+class RealtimeVehicleStatus(BaseModel):
+    current_health: float = 1.0
+    battery_level: float = 100.0
+
 class GameSession(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     game_session_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Custom unique game session ID (UUID string)")
-    user_id: uuid.UUID # Changed from player_id
-    used_vehicle_id: str # This should refer to PlayerOwnedVehicle.instance_id (the custom UUID string)
-    # ... (rest of GameSession fields)
-    vehicle_snapshot: VehicleSnapshot
-    cargo_snapshot: List[CargoItemSnapshot]
-    total_cargo_weight_at_start: float
-    total_cargo_volume_at_start: float
-    destination_id: uuid.UUID 
-    destination_snapshot: DestinationSnapshot
-    associated_player_task_ids: Optional[List[str]] = None 
+    user_id: uuid.UUID
+    vehicle_snapshot: Dict[str, Any]
+    destination_snapshot: Dict[str, Any]
+    cargo_snapshot: List[Dict[str, Any]]
+    associated_player_task_ids: Optional[List[str]] = None
+
+    status: str
+    progress: GameSessionProgress = Field(default_factory=GameSessionProgress)
+    realtime_vehicle_status: RealtimeVehicleStatus = Field(default_factory=RealtimeVehicleStatus)
+    pending_event: Optional[PendingEvent] = None
+    active_effects: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
+    event_history: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
+
     start_time: datetime = Field(default_factory=datetime.now)
     end_time: Optional[datetime] = None
-    status: str
     outcome_summary: Optional[GameSessionOutcomeSummary] = None
-    
-    # Fields for state management
-    total_distance_km: float = Field(default=0.0)
-    estimated_duration_seconds: int = Field(default=0)
-    progress: GameProgress = Field(default_factory=GameProgress)
-    vehicle_status: VehicleStatus = Field(default_factory=VehicleStatus)
-    pending_event: Optional[PendingEvent] = None
 
     last_updated_at: datetime = Field(default_factory=datetime.now)
     model_config = COMMON_CONFIG

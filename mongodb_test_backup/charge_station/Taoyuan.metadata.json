@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"},{"v":{"$numberInt":"2"},"key":{"Location":{"$numberInt":"1"}},"name":"location_2dsphere","background":false,"sparse":false}],"uuid":"9dcc8b8afdfd46148e8ce9e61b335b27","collectionName":"Taoyuan","type":"collection"}

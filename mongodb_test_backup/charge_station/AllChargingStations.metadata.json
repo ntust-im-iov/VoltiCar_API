@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"},{"v":{"$numberInt":"2"},"key":{"location_geo":"2dsphere"},"name":"location_geo_2dsphere","2dsphereIndexVersion":{"$numberInt":"3"}}],"uuid":"15a717580fe54a7ba1375353151b4fe4","collectionName":"AllChargingStations","type":"collection"}
